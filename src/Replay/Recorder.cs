@@ -23,6 +23,9 @@ public sealed partial class Recorder : IAsyncDisposable
     private double origin = double.NaN;
     private double lastFrame = Native.Clock;
     private double videoTime;
+    private long droppedCaptureFrames = -1, duplicatedCaptureFrames = -1;
+    internal long? CaptureDroppedFrames { get { var value = Interlocked.Read(ref droppedCaptureFrames); return value < 0 ? null : value; } }
+    internal long? CaptureDuplicatedFrames { get { var value = Interlocked.Read(ref duplicatedCaptureFrames); return value < 0 ? null : value; } }
     private bool stopping;
     private bool accessLost;
     public bool RecoverableCaptureLoss => accessLost && !Running;
@@ -33,6 +36,7 @@ public sealed partial class Recorder : IAsyncDisposable
     private double rewindSaveCutoff = double.NegativeInfinity;
     private double? rewindRollbackCutoff;
     internal RewindVideoExport VideoExport { get; set; } = new();
+    internal RewindPacketCopy PacketCopy { get; set; } = new();
     private double RewindHistoryStart => Math.Max(rewindSince, rewindSaveCutoff);
     public async Task RestartCapture()
     {
@@ -152,6 +156,7 @@ public sealed partial class Recorder : IAsyncDisposable
         videoDirectory = Path.Combine(SessionDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(videoDirectory);
         origin = double.NaN; videoTime = 0;
+        Interlocked.Exchange(ref droppedCaptureFrames, -1); Interlocked.Exchange(ref duplicatedCaptureFrames, -1);
             // gfxcapture scales on the GPU. NVENC accepts the resulting D3D11 BGRA textures directly.
             var width = settings.Height * 16 / 9; width -= width % 2;
             var capture = CaptureGraph.Build(settings.CaptureMode, settings.HideDisplayBorder, settings.Fps, game, currentDisplay, width, settings.Height);
@@ -200,7 +205,11 @@ public sealed partial class Recorder : IAsyncDisposable
     private async Task ReadProgress()
     {
         while (await video!.StandardOutput.ReadLineAsync() is { } line)
+        {
             if (line.StartsWith("out_time_us=") && long.TryParse(line[12..], out var us)) videoTime = us / 1000000.0;
+            if (line.StartsWith("drop_frames=") && long.TryParse(line[12..], out var dropped)) Interlocked.Exchange(ref droppedCaptureFrames, dropped);
+            if (line.StartsWith("dup_frames=") && long.TryParse(line[11..], out var duplicated)) Interlocked.Exchange(ref duplicatedCaptureFrames, duplicated);
+        }
     }
     private string Tail() { lock (logTail) return string.Join("\n", logTail.TakeLast(10)); }
     private string FullTail() { lock (logTail) return string.Join("\n", logTail); }
@@ -314,6 +323,9 @@ public sealed partial class Recorder : IAsyncDisposable
             rewindRollbackCutoff = previousCutoff;
             rewindSaveCutoff = requested;
             checkpointAccepted = true;
+            var exportSnapshot = new RewindExportSnapshot(requested, lower, previousCutoff, requestedEpoch, settings.Fps,
+                selected.Select((s, i) => new RewindExportSnapshot.Range(s.Path, s.Start, s.End, intervals[i].Start, intervals[i].End)),
+                snapshots.Select(s => Path.Combine(staging, s.Track.Name + ".wav")));
             SaveTiming.Current?.Mark("snapshot-cutoff-established", new { Tracks = snapshots.Count, PcmBytes = snapshots.Sum(s => s.Packets.Sum(p => (long)p.Data.Length)) });
             AvailableSeconds = 0;
             locked = false; files.Release(); // Own video directory entries and audio references now; export is independent.
@@ -338,14 +350,15 @@ public sealed partial class Recorder : IAsyncDisposable
             args.AddRange(["-filter_complex", filters, "-map", "[v]"]);
             if (mixInputs.Count > 0) args.AddRange(["-map", "[mix]"]);
             for (var i = 0; i < tracks.Count; i++) args.AddRange(["-map", $"{i + 1}:a:0"]);
-            // Decode the partial GOP: stream copy would leak pre-checkpoint frames.
+            // The unchanged decoded-trim arguments remain the fallback reference.
             args.AddRange(["-c:v", Encoder, "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", settings.Quality.ToString(), "-b:v", "0", "-maxrate", $"{settings.MaxBitrateMbps}M", "-bufsize", $"{settings.MaxBitrateMbps * 2}M", "-bf", "0", "-r", settings.Fps.ToString(), "-c:a", "aac", "-b:a", "160k", "-t", duration.ToString("F6", CultureInfo.InvariantCulture)]);
             if (mixInputs.Count > 0) args.AddRange(["-metadata:s:a:0", "title=Mix", "-disposition:a:0", "default"]);
             for (var i = 0; i < tracks.Count; i++) args.AddRange([$"-metadata:s:a:{i + 1}", $"title={tracks[i].Name}", $"-disposition:a:{i + 1}", "0"]);
             args.AddRange(["-y", temp]);
             stage = "export";
             SaveTiming.Current?.Mark("video-processing-started");
-            var exported = await VideoExport.Run(Encoder, selected[0].Path, args, temp, async () =>
+            var plan = await RewindPacketCopy.Inspect(exportSnapshot);
+            var exported = await PacketCopy.Run(plan, VideoExport, Encoder, selected[0].Path, args, temp, async () =>
             {
                 var probe = await MediaTools.Run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", temp]);
                 if (probe.Code != 0 || !string.IsNullOrWhiteSpace(probe.Error)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
@@ -358,7 +371,8 @@ public sealed partial class Recorder : IAsyncDisposable
             SaveTiming.Current?.Associate(final);
             var metadata = new { GameName, Encoder, CaptureBackend, HideDisplayBorder = settings.HideDisplayBorder, Duration = duration, CaptureMode = settings.CaptureMode, AudioMode = settings.AudioMode, AudioOffsetMs = settings.AudioOffsetMs, Sync = "WASAPI frame position anchored to QPC; video epoch estimated from pre-encode frame arrival", Warnings = clipWarnings, RemovedCaptureGapSeconds = Math.Max(0, end - start - duration), Tracks = reports,
                 ActualStart = start, ActualEnd = end, AcceptedSaveBoundary = requested, PreviousSaveCutoff = double.IsFinite(previousCutoff) ? (double?)previousCutoff : null,
-                ExportDecoder = exported.Decoder, HardwareDecodeFallback = exported.SoftwareFallback,
+                ExportDecoder = exported.Video.Decoder, HardwareDecodeFallback = exported.Video.SoftwareFallback,
+                PacketCopyEligible = exported.Eligible, PacketCopyFallback = exported.CopyFallback, ExportPlanReason = exported.Reason,
                 CaptureDiagnostics = tracks.ToDictionary(t => t.Name, t => new { t.DeviceName, t.CaptureFormat, t.MissingFrames, t.Discontinuities }) };
             readyToPublish = true; stage = "publish";
             var metadataWarning = await ClipFiles.Publish(temp, final, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));

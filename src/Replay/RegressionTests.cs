@@ -7,6 +7,7 @@ internal static class RegressionTests
     public static async Task Run(string directory, Action<bool, string> check)
     {
         Directory.CreateDirectory(directory);
+        await RewindPacketCopyTests.Run(Path.Combine(directory, "rewind-packet-copy"), check);
         await RewindVideoExportTests.Run(Path.Combine(directory, "rewind-video-export"), check);
         await MicrophoneChannelTests.Run(Path.Combine(directory, "microphone-channels"), check);
         NativePcmTests.Run((value, name) => { if (!value) check(false, name); });
