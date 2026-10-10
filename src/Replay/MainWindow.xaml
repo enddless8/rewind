@@ -1,0 +1,720 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Replay" x:Class="Replay.MainWindow" Title="Rewind" Icon="pack://application:,,,/Rewind;component/assets/app/Rewind.ico" Width="820" Height="674" MinWidth="640" MinHeight="560" ResizeMode="CanMinimize" WindowStartupLocation="CenterScreen" Background="{StaticResource RewindBackground}" Foreground="{StaticResource RewindForeground}" FontFamily="{StaticResource InterFont}" FontSize="14" PreviewMouseDown="MainWindow_PreviewMouseDown" PreviewKeyDown="MainWindow_PreviewKeyDown" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid x:Name="MainView" Grid.RowSpan="2" Margin="-28">
+            <!-- A single uniform scale preserves Figma proportions inside the fixed native
+                 window; the layout uses Grid rows/columns, never canvas coordinates. -->
+            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid x:Name="MainLayout" Width="1018">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="56"/>
+                        <RowDefinition Height="90.5"/>
+                        <RowDefinition Height="49.5"/>
+                        <RowDefinition Height="367.5"/>
+                        <RowDefinition Height="48.5"/>
+                        <RowDefinition Height="64.5"/>
+                        <RowDefinition Height="53.5"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.RowSpan="2" HorizontalAlignment="Left" VerticalAlignment="Top" Height="76" Margin="32.5,9,0,0" UseLayoutRounding="False">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="55"/><ColumnDefinition Width="12"/><ColumnDefinition Width="76"/></Grid.ColumnDefinitions>
+                        <Button x:Name="SettingsGear" Style="{StaticResource RewindIconButton}" Width="55" Height="55" Padding="0" VerticalAlignment="Center" Click="Settings_Click" ToolTip="Настройки" AutomationProperties.Name="Настройки">
+                            <Image Source="{StaticResource MainFigmaGearIcon}" Width="55" Height="55"/>
+                        </Button>
+                        <Button x:Name="MainFolderButton" Grid.Column="2" Style="{StaticResource RewindIconButton}" Width="76" Height="76" Padding="0" VerticalAlignment="Center" Click="OpenFolder_Click" ToolTip="Открыть папку клипов" AutomationProperties.Name="Открыть папку клипов">
+                            <Image Source="{StaticResource MainFigmaFolderIcon}" Width="76" Height="76"/>
+                        </Button>
+                    </Grid>
+                    <Grid Grid.Row="1" Width="282.5" HorizontalAlignment="Center">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="225.5"/><ColumnDefinition Width="12"/><ColumnDefinition Width="45"/></Grid.ColumnDefinitions>
+                        <TextBlock x:Name="MainTitle" Text="Rewind" Style="{StaticResource RewindTitle}"/>
+                        <Button x:Name="RewindStatusButton" Grid.Column="2" Style="{StaticResource RewindIconButton}" Width="45" Height="23.5" Padding="0" Margin="0,9,0,0" VerticalAlignment="Center" Click="RewindStatus_Click" ToolTip="Буфер Rewind выключен" AutomationProperties.Name="Выбрать состояние Rewind">
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23.5"/><ColumnDefinition Width="5.5"/><ColumnDefinition Width="16"/></Grid.ColumnDefinitions>
+                                <Ellipse x:Name="BufferStateDot" Fill="{StaticResource MainRewindInactive}" Width="23.5" Height="23.5"/>
+                                <Image Grid.Column="2" Source="{StaticResource MainFigmaChevronIcon}" Width="16" Height="9" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Button>
+                    </Grid>
+                    <Grid Grid.Row="3" HorizontalAlignment="Center" Width="885.5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="252.0915"/><ColumnDefinition Width="52.4085"/>
+                            <ColumnDefinition Width="252.0915"/><ColumnDefinition Width="42.45025"/>
+                            <ColumnDefinition Width="272"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="252.0915"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <Button x:Name="SaveButton" Style="{StaticResource MainSaveCircle}" Click="Save_Click" IsEnabled="False" ToolTipService.ShowOnDisabled="True" ToolTip="Сохранить последние секунды Rewind" AutomationProperties.Name="Сохранить Rewind">
+                                <Image Width="109.5" Height="102" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Image.Style><Style TargetType="Image"><Setter Property="Source" Value="{StaticResource MainFigmaSaveIcon}"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=SaveButton, Path=IsEnabled}" Value="False"><Setter Property="Source" Value="{StaticResource MainFigmaSaveDisabledIcon}"/></DataTrigger></Style.Triggers></Style></Image.Style>
+                                    <Image.RenderTransform><TranslateTransform X="-2.8" Y="7.5"/></Image.RenderTransform>
+                                </Image>
+                            </Button>
+                            <TextBlock Grid.Row="1" Text="Сохранить&#10;Rewind">
+                                <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource RewindActionLabel}"><Style.Triggers><DataTrigger Binding="{Binding ElementName=SaveButton, Path=IsEnabled}" Value="False"><Setter Property="Opacity" Value="0.57"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Grid.Row="2" x:Name="DurationText" Text="180 сек">
+                                <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource RewindDurationLabel}"><Style.Triggers><DataTrigger Binding="{Binding ElementName=SaveButton, Path=IsEnabled}" Value="False"><Setter Property="Foreground" Value="#40FFFFFF"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                        <Grid Grid.Column="1" Grid.ColumnSpan="3">
+                            <!-- The label can use the neighboring gaps without clipping or moving the circle. -->
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="52.4085"/><ColumnDefinition Width="252.0915"/><ColumnDefinition Width="42.45025"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="252.0915"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <Button x:Name="ToggleButton" Grid.Column="1" Style="{StaticResource MainActionCircle}" Click="Recording_Click" ToolTipService.ShowOnDisabled="True" ToolTip="Начать запись" AutomationProperties.Name="Начать запись">
+                                <Image x:Name="RecordingIcon" Source="{StaticResource MainFigmaPlayIcon}" Width="71" Height="86" HorizontalAlignment="Center" VerticalAlignment="Center"><Image.RenderTransform><TranslateTransform X="9" Y="0.5"/></Image.RenderTransform></Image>
+                            </Button>
+                            <TextBlock x:Name="RecordingLabel" Grid.Row="1" Grid.ColumnSpan="3" Margin="9.95825,8,0,0" Width="300" Text="Начать запись" Style="{StaticResource RewindActionLabel}" TextWrapping="NoWrap" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="RecordingDurationText" Grid.Row="2" Grid.Column="1" Text="0 сек" Visibility="Hidden" Style="{StaticResource RewindDurationLabel}" AutomationProperties.Name="Длительность записи"/>
+                        </Grid>
+                        <Grid Grid.Column="4">
+                            <Grid.RowDefinitions><RowDefinition Height="252.0915"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <Button x:Name="ScreenshotButton" Style="{StaticResource MainActionCircle}" Click="Screenshot_Click" ToolTipService.ShowOnDisabled="True" ToolTip="Сделать скриншот выбранного источника" AutomationProperties.Name="Сделать скриншот">
+                                <Image Source="{StaticResource MainFigmaScreenshotIcon}" Width="116.5" Height="116.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Button>
+                            <TextBlock Grid.Row="1" Text="Сделать скриншот" Style="{StaticResource RewindActionLabel}" TextWrapping="NoWrap"/>
+                        </Grid>
+                    </Grid>
+                    <Button x:Name="MicrophoneQuickButton" Grid.Row="5" Style="{StaticResource RewindIconButton}" Width="64.5" Height="64.5" Padding="0" HorizontalAlignment="Center" Click="MicrophoneQuick_Click" ToolTipService.ShowOnDisabled="True" ToolTip="Выключить микрофон" AutomationProperties.Name="Выключить микрофон">
+                        <Image x:Name="MicrophoneQuickIcon" Source="{StaticResource MainFigmaMicrophoneIcon}" Width="64.5" Height="64.5"/>
+                    </Button>
+                    <!-- Overlay spans header and gap; visibility never affects measured rows. -->
+                    <Grid Grid.Row="1" Grid.RowSpan="2" Width="282.5" HorizontalAlignment="Center" Panel.ZIndex="5">
+                        <Border x:Name="RewindSelector" Width="53" Height="78.5" Margin="0,37,0,0" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" Background="#333131" BorderBrush="#535353" BorderThickness="0.5" CornerRadius="13.5" KeyboardNavigation.TabNavigation="Cycle">
+                            <Grid Margin="0,0,0,5.5"><Grid.RowDefinitions><RowDefinition Height="28.5"/><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
+                                <Button x:Name="ExpandedRewindStatusButton" Style="{StaticResource RewindSelectorAction}" Click="RewindStatus_Click" AutomationProperties.Name="Закрыть выбор состояния Rewind">
+                                    <Grid Width="35.5"><Grid.ColumnDefinitions><ColumnDefinition Width="12.5"/><ColumnDefinition Width="9"/><ColumnDefinition Width="14"/></Grid.ColumnDefinitions>
+                                        <Ellipse x:Name="ExpandedBufferStateDot" Width="12.5" Height="12.5" Fill="{StaticResource MainRewindInactive}"/>
+                                        <Image Grid.Column="2" Source="{StaticResource MainFigmaChevronIcon}" Width="16" Height="9" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><RotateTransform Angle="180"/></Image.RenderTransform></Image>
+                                    </Grid>
+                                </Button>
+                                <Button x:Name="RewindOnButton" Grid.Row="1" Content="ON" Style="{StaticResource RewindSelectorAction}" Click="RewindOn_Click" AutomationProperties.Name="Включить Rewind"/>
+                                <Button x:Name="RewindOffButton" Grid.Row="2" Content="OFF" Style="{StaticResource RewindSelectorAction}" Click="RewindOff_Click" AutomationProperties.Name="Выключить Rewind"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Viewbox>
+        </Grid>
+
+        <Grid x:Name="SettingsView" Visibility="Collapsed" Margin="-28,-28,-28,-28">
+            <Grid.Resources>
+                <BooleanToVisibilityConverter x:Key="PageVisibility" />
+            </Grid.Resources>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <Border Background="{StaticResource SettingsSidebar}" Padding="18,13.5,10,18">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Bottom">
+                        <StackPanel x:Name="LanguageItem" Orientation="Horizontal" Margin="8,0,0,12" ToolTip="Смена языка появится позже" AutomationProperties.Name="Язык: русский">
+                            <Image Source="{StaticResource FigmaLanguageIcon}" Width="36.5" Height="36.5" Stretch="Uniform" Margin="-5.75,0,2.25,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <TextBlock Text="Язык" FontSize="18.3869" Foreground="{StaticResource RewindMuted}" />
+                                <TextBlock Text="Русский" FontSize="11.5" Foreground="{StaticResource RewindMuted}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <Button Content="← На главный экран" Click="Back_Click" Background="Transparent" Foreground="{StaticResource RewindMuted}" Padding="4,10" Margin="0" FontSize="12" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Настройки" FontSize="37.5" FontWeight="Normal" Foreground="White" Margin="6,0,0,7" FontFamily="{StaticResource CoolveticaFont}" />
+                        <RadioButton x:Name="CaptureNav" GroupName="SettingsNavigation" Checked="SettingsNavigation_Checked" IsChecked="True" Style="{StaticResource SettingsNavigation}" AutomationProperties.Name="Захват видео">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource FigmaCaptureIcon}" Width="27.5" Height="27.5" Stretch="Uniform" Style="{StaticResource FigmaNavigationIcon}" Margin="0,0,5,0" />
+                                <TextBlock Text="Захват видео" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="AudioNav" GroupName="SettingsNavigation" Checked="SettingsNavigation_Checked" Style="{StaticResource SettingsNavigation}" AutomationProperties.Name="Аудио">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource FigmaMicrophoneIcon}" Width="27.5" Height="27.5" Stretch="Uniform" Style="{StaticResource FigmaNavigationIcon}" Margin="0,0,5,0" />
+                                <TextBlock Text="Аудио" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="OutputNav" GroupName="SettingsNavigation" Checked="SettingsNavigation_Checked" Style="{StaticResource SettingsNavigation}" AutomationProperties.Name="Вывод">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource FigmaFolderIcon}" Width="27.5" Height="27.5" Stretch="Uniform" Style="{StaticResource FigmaNavigationIcon}" Margin="0,0,5,0" />
+                                <TextBlock Text="Вывод" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="HotkeysNav" GroupName="SettingsNavigation" Checked="SettingsNavigation_Checked" Style="{StaticResource SettingsNavigation}" AutomationProperties.Name="Горячие клавиши">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource FigmaHotkeysIcon}" Width="38" Height="38" Stretch="Uniform" Style="{StaticResource FigmaNavigationIcon}" Margin="-5.25,-5.25,-0.25,-5.25" />
+                                <TextBlock Text="Горячие клавиши" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="AdvancedNav" GroupName="SettingsNavigation" Checked="SettingsNavigation_Checked" Style="{StaticResource SettingsNavigation}" AutomationProperties.Name="Дополнительно">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource FigmaAdvancedIcon}" Width="32" Height="32" Stretch="Uniform" Style="{StaticResource FigmaNavigationIcon}" Margin="-2.25,-2.25,2.75,-2.25" />
+                                <TextBlock Text="Дополнительно" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            <Grid Grid.Column="1" Margin="15,24.5,26,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,26">
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding ElementName=CaptureNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                        <Image Source="{StaticResource FigmaCaptureIcon}" Width="27.5" Height="27.5" Stretch="Uniform" Margin="0,0,15.5,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Захват видео" VerticalAlignment="Center" Style="{StaticResource SettingsHeading}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding ElementName=AudioNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                        <Image Source="{StaticResource FigmaMicrophoneIcon}" Width="27.5" Height="27.5" Stretch="Uniform" Margin="0,0,15.5,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Аудио" VerticalAlignment="Center" Style="{StaticResource SettingsHeading}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding ElementName=OutputNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                        <Image Source="{StaticResource FigmaFolderIcon}" Width="27.5" Height="27.5" Stretch="Uniform" Margin="0,0,15.5,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Вывод" VerticalAlignment="Center" Style="{StaticResource SettingsHeading}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding ElementName=HotkeysNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                        <Image Source="{StaticResource FigmaHotkeysIcon}" Width="38" Height="38" Stretch="Uniform" Margin="-5.25,-5.25,10.25,-5.25" VerticalAlignment="Center" />
+                        <TextBlock Text="Горячие клавиши" VerticalAlignment="Center" Style="{StaticResource SettingsHeading}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding ElementName=AdvancedNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                        <Image Source="{StaticResource FigmaAdvancedIcon}" Width="32" Height="32" Stretch="Uniform" Margin="-2.25,-2.25,13.25,-2.25" VerticalAlignment="Center" />
+                        <TextBlock Text="Дополнительно" VerticalAlignment="Center" Style="{StaticResource SettingsHeading}" />
+                    </StackPanel>
+                </StackPanel>
+                <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,12">
+                    <ScrollViewer.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsScrollBar}" />
+                    </ScrollViewer.Resources>
+                    <StackPanel Margin="43.5,0,0,0">
+                        <Grid x:Name="SettingsPanel">
+                            <Grid x:Name="CaptureFields" Visibility="{Binding ElementName=CaptureNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.4493*" />
+                                    <ColumnDefinition Width="0.5507*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="53" />
+                                    <RowDefinition Height="53" />
+                                    <RowDefinition Height="53" />
+                                    <RowDefinition Height="84" />
+                                    <RowDefinition Height="53" />
+                                    <RowDefinition Height="53" />
+                                    <RowDefinition Height="53" />
+                                    <RowDefinition Height="74" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Режим захвата" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                <ComboBox x:Name="CaptureMode" Grid.Column="1" Style="{StaticResource SettingsCombo}" VerticalAlignment="Top">
+                                    <ComboBoxItem Content="Приложение" Tag="Game" />
+                                    <ComboBoxItem Content="Приложение + рабочий стол" Tag="Desktop" />
+                                </ComboBox>
+                                <WrapPanel Grid.Row="1" VerticalAlignment="Center" Orientation="Horizontal">
+                                    <TextBlock Text="Экран" Style="{StaticResource SettingsLabel}" TextWrapping="Wrap" />
+                                    <Image x:Name="MonitorInfoIcon" Source="{StaticResource FigmaInfoIcon}" Style="{StaticResource SettingsInfoIcon}" Width="22.5" Height="22.5" Margin="4,0,0,0" VerticalAlignment="Center">
+                                        <Image.ToolTip><ToolTip Style="{StaticResource SettingsInfoToolTip}" Content="Для режима захвата рабочего стола" /></Image.ToolTip>
+                                    </Image>
+                                </WrapPanel>
+                                <ComboBox x:Name="MonitorPicker" Grid.Row="1" Grid.Column="1" Style="{StaticResource SettingsCombo}" VerticalAlignment="Top" Opacity="1" ToolTip="Экран для захвата рабочего стола" />
+                                <WrapPanel Grid.Row="2" VerticalAlignment="Center" Orientation="Horizontal">
+                                    <TextBlock Text="Приложение" Style="{StaticResource SettingsLabel}" TextWrapping="Wrap" />
+                                    <Image x:Name="ApplicationInfoIcon" Source="{StaticResource FigmaInfoIcon}" Style="{StaticResource SettingsInfoIcon}" Width="22.5" Height="22.5" Margin="4,0,0,0" VerticalAlignment="Center">
+                                        <Image.ToolTip><ToolTip Style="{StaticResource SettingsInfoToolTip}" Content="Для режима захвата приложения" /></Image.ToolTip>
+                                    </Image>
+                                </WrapPanel>
+                                <Grid Grid.Row="2" Grid.Column="1" VerticalAlignment="Top">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="30" />
+                                    </Grid.ColumnDefinitions>
+                                    <local:ApplicationSourceComboBox x:Name="GamePicker" Style="{StaticResource SettingsCombo}" ItemTemplate="{StaticResource ApplicationSourceItem}" ItemContainerStyle="{StaticResource ApplicationSourceComboItem}" Opacity="1" ToolTip="Приложение для захвата" />
+                                    <Button x:Name="RefreshSourceButton" Grid.Column="1" Click="Refresh_Click" ToolTip="Обновить список источников" AutomationProperties.Name="Обновить список источников" Style="{StaticResource RewindIconButton}" Width="28" Height="32" Padding="5" Margin="2,0,0,0">
+                                        <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" />
+                                    </Button>
+                                </Grid>
+                                <TextBlock Grid.Row="3" Text="Длительность Rewind" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                <StackPanel Grid.Row="3" Grid.Column="1" VerticalAlignment="Center">
+                                    <local:DurationLandmarkPanel x:Name="DurationLandmarks">
+                                        <local:DurationLandmarkPanel.Resources>
+                                            <Style TargetType="Button">
+                                                <Setter Property="FontSize" Value="11.5" />
+                                                <Setter Property="Foreground" Value="{StaticResource RewindForeground}" />
+                                                <Setter Property="Background" Value="Transparent" />
+                                                <Setter Property="Cursor" Value="Hand" />
+                                                <Setter Property="FocusVisualStyle" Value="{StaticResource RewindKeyboardFocus}" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"><ContentPresenter /></Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding ElementName=DurationBox, Path=Text}" Value="15" />
+                                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="15" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Foreground" Value="{StaticResource RewindActive}" />
+                                                    </MultiDataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding ElementName=DurationBox, Path=Text}" Value="30" />
+                                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="30" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Foreground" Value="{StaticResource RewindActive}" />
+                                                    </MultiDataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding ElementName=DurationBox, Path=Text}" Value="60" />
+                                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="60" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Foreground" Value="{StaticResource RewindActive}" />
+                                                    </MultiDataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding ElementName=DurationBox, Path=Text}" Value="120" />
+                                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="120" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Foreground" Value="{StaticResource RewindActive}" />
+                                                    </MultiDataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding ElementName=DurationBox, Path=Text}" Value="300" />
+                                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="300" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Foreground" Value="{StaticResource RewindActive}" />
+                                                    </MultiDataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding ElementName=DurationBox, Path=Text}" Value="600" />
+                                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="600" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Foreground" Value="{StaticResource RewindActive}" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </local:DurationLandmarkPanel.Resources>
+                                        <Button Content="15 сек" Tag="15" Click="DurationLandmark_Click" />
+                                        <Button Content="30 сек" Tag="30" Click="DurationLandmark_Click" />
+                                        <Button Content="1 мин" Tag="60" Click="DurationLandmark_Click" />
+                                        <Button Content="2 мин" Tag="120" Click="DurationLandmark_Click" />
+                                        <Button Content="5 мин" Tag="300" Click="DurationLandmark_Click" />
+                                        <Button Content="10 мин" Tag="600" Click="DurationLandmark_Click" />
+                                    </local:DurationLandmarkPanel>
+                                    <local:RewindDurationSlider x:Name="DurationSlider" Background="Transparent" TickPlacement="TopLeft" Ticks="0,1,2,3,4,5" Style="{StaticResource SettingsSlider}" Minimum="0" Maximum="5" SmallChange="0.01" LargeChange="0.1" PreviewKeyDown="DurationSlider_KeyDown" Value="{Binding ElementName=DurationBox, Path=Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource DurationPositionConverter}}" AutomationProperties.Name="Длительность Rewind в секундах" ToolTip="От 15 до 600 секунд; клавиши ← и → меняют значение на 1 секунду" />
+                                    <TextBlock x:Name="DurationValueText" Text="{Binding ElementName=DurationBox, Path=Text, Converter={StaticResource DurationTextConverter}}" FontSize="12" Foreground="{StaticResource RewindActive}" TextAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Grid.Row="4" Text="Разрешение / FPS" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                <Grid Grid.Row="4" Grid.Column="1" VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="8" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="HeightPicker" Style="{StaticResource SettingsCombo}" AutomationProperties.Name="Разрешение">
+                                        <ComboBoxItem Content="720p" Tag="720" />
+                                        <ComboBoxItem Content="1080p" Tag="1080" />
+                                        <ComboBoxItem Content="1440p" Tag="1440" />
+                                        <ComboBoxItem Content="2160p" Tag="2160" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="FpsPicker" Grid.Column="2" Style="{StaticResource SettingsCombo}" AutomationProperties.Name="FPS">
+                                        <ComboBoxItem Content="30 FPS" Tag="30" />
+                                        <ComboBoxItem Content="60 FPS" Tag="60" />
+                                    </ComboBox>
+                                </Grid>
+                                <WrapPanel Grid.Row="5" VerticalAlignment="Center" Orientation="Horizontal">
+                                    <TextBlock Text="Качество записи" Style="{StaticResource SettingsLabel}" TextWrapping="Wrap" />
+                                    <Image x:Name="QualityInfoIcon" Source="{StaticResource FigmaInfoIcon}" Style="{StaticResource SettingsInfoIcon}" Width="22.5" Height="22.5" Margin="4,0,0,0" VerticalAlignment="Center">
+                                        <Image.ToolTip><ToolTip Style="{StaticResource SettingsInfoToolTip}" Content="Влияет на производительность и размер файла" /></Image.ToolTip>
+                                    </Image>
+                                </WrapPanel>
+                                <ComboBox x:Name="QualityPicker" Grid.Row="5" Grid.Column="1" Style="{StaticResource SettingsCombo}" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="Компактно" Tag="30" />
+                                    <ComboBoxItem Content="Баланс" Tag="27" />
+                                    <ComboBoxItem Content="Высокое" Tag="23" />
+                                </ComboBox>
+                                <TextBlock Grid.Row="6" Text="Кодек" Style="{StaticResource SettingsLabel}" />
+                                <ComboBox x:Name="CodecPicker" Grid.Row="6" Grid.Column="1" Style="{StaticResource SettingsCombo}" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="Авто" Tag="Auto" />
+                                    <ComboBoxItem Content="HEVC" Tag="HEVC" />
+                                    <ComboBoxItem Content="AV1" Tag="AV1" />
+                                    <ComboBoxItem Content="H.264" Tag="H264" />
+                                </ComboBox>
+                                <TextBlock Grid.Row="7" Text="Макс. битрейт" Style="{StaticResource SettingsLabel}" />
+                                <StackPanel Grid.Row="7" Grid.Column="1" VerticalAlignment="Center">
+                                    <StackPanel.Resources>
+                                        <local:BitrateValuePositionConverter x:Key="BitrateValuePosition" />
+                                    </StackPanel.Resources>
+                                    <Grid>
+                                        <TextBlock x:Name="BitrateValueText" Text="{Binding ElementName=BitrateBox, Path=Text, StringFormat={}{0} Мбит/с}" Width="68" TextAlignment="Center" HorizontalAlignment="Left" FontSize="11" Foreground="{StaticResource RewindActive}" IsHitTestVisible="False">
+                                            <TextBlock.Margin>
+                                                <MultiBinding Converter="{StaticResource BitrateValuePosition}">
+                                                    <Binding ElementName="BitrateSlider" Path="Value" />
+                                                    <Binding ElementName="BitrateSlider" Path="Minimum" />
+                                                    <Binding ElementName="BitrateSlider" Path="Maximum" />
+                                                    <Binding ElementName="BitrateSlider" Path="ActualWidth" />
+                                                    <Binding RelativeSource="{RelativeSource Self}" Path="Width" />
+                                                </MultiBinding>
+                                            </TextBlock.Margin>
+                                        </TextBlock>
+                                    </Grid>
+                                    <local:BitrateSlider x:Name="BitrateSlider" Background="Transparent" TickPlacement="TopLeft" Ticks="2,100" Style="{StaticResource SettingsSlider}" Minimum="2" Maximum="100" SmallChange="1" IsSnapToTickEnabled="False" Value="{Binding ElementName=BitrateBox, Path=Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Максимальный битрейт в Мбит/с" />
+                                    <Grid Margin="12,0">
+                                        <TextBlock Text="2 Мбит/с" FontSize="10" Foreground="{StaticResource RewindMuted}" />
+                                        <TextBlock Text="100 Мбит/с" HorizontalAlignment="Right" FontSize="10" Foreground="{StaticResource RewindMuted}" />
+                                    </Grid>
+                                </StackPanel>
+                                <TextBox x:Name="DurationBox" Visibility="Collapsed" />
+                                <TextBox x:Name="BitrateBox" Visibility="Collapsed" />
+                            </Grid>
+                            <StackPanel x:Name="LegacyAudioFields" Visibility="{Binding ElementName=AudioNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="0.4493*" />
+                                        <ColumnDefinition Width="0.5507*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="68" />
+                                        <RowDefinition Height="72" />
+                                        <RowDefinition Height="68" />
+                                        <RowDefinition Height="64" />
+                                        <RowDefinition Height="64" />
+                                        <RowDefinition Height="58" />
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                     <Grid.ColumnDefinitions><ColumnDefinition Width="0.4493*"/><ColumnDefinition Width="0.5507*"/></Grid.ColumnDefinitions>
+                                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                     <TextBlock x:Name="MicrophoneSectionLabel" Text="Микрофон" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                     <StackPanel x:Name="MicrophoneSectionControls" Grid.Column="1">
+                                        <ComboBox x:Name="MicPicker" DisplayMemberPath="Name" Style="{StaticResource SettingsCombo}" AutomationProperties.Name="Микрофон" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=SelectedItem.Name}">
+                                            <ComboBox.Resources>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="TextWrapping" Value="NoWrap" />
+                                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                </Style>
+                                            </ComboBox.Resources>
+                                        </ComboBox>
+                                        <ProgressBar x:Name="TestMicMeter" Maximum="60" Style="{StaticResource AudioTestMeter}" Margin="0,6" AutomationProperties.Name="Уровень микрофона" ToolTip="Живой уровень микрофона" />
+                                        <Button x:Name="MicTestButton" Content="Проверить микрофон" Click="MicTest_Click" Style="{StaticResource AudioTestButton}" />
+                                     </StackPanel>
+                                     <TextBlock x:Name="MicTestText" Grid.Row="1" Grid.Column="1" Text="Живой уровень и прослушивание без записи." Style="{StaticResource SettingsHelp}" Margin="0,6,0,0" TextAlignment="Center" />
+                                     <TextBlock x:Name="MicChannelFeedback" Grid.Row="2" Grid.ColumnSpan="2" Style="{StaticResource SettingsHelp}" Margin="0,6,0,0" Visibility="Collapsed" />
+                                    </Grid>
+                                    <Grid x:Name="MicChannelRow" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,8" Visibility="Collapsed">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="0.4493*"/><ColumnDefinition Width="0.5507*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Режим микрофона" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                        <ComboBox x:Name="MicChannelPicker" Grid.Column="1" Style="{StaticResource SettingsCombo}" SelectionChanged="MicrophoneChannelMode_Changed" AutomationProperties.Name="Режим микрофона" ToolTip="Авто — существующая обработка. Моно — один вход в обоих каналах. Смешивание усредняет входы: один сигнал среди двух станет на 6 dB тише. Стерео сохраняет разделение первых двух каналов.">
+                                            <ComboBoxItem Content="Авто" Tag="Auto" />
+                                            <ComboBoxItem Content="Моно · канал 1" Tag="Channel1" />
+                                            <ComboBoxItem Content="Моно · канал 2" Tag="Channel2" />
+                                            <ComboBoxItem Content="Моно · смешать каналы" Tag="MonoMix" />
+                                            <ComboBoxItem Content="Стерео" Tag="Stereo" />
+                                        </ComboBox>
+                                    </Grid>
+                                    <TextBlock Grid.Row="2" Text="Громкость микрофона" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <Slider x:Name="MicVolumeSlider" Grid.Row="2" Grid.Column="1" Style="{StaticResource AudioSlider}" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="100" Tag="%" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="AudioSettingsChanged" AutomationProperties.Name="Громкость микрофона в процентах" />
+                                    <TextBlock Grid.Row="3" Text="Усиление звука&#10;микрофона" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <Slider x:Name="MicBoostSlider" Grid.Row="3" Grid.Column="1" Style="{StaticResource AudioSlider}" VerticalAlignment="Center" Minimum="0" Maximum="30" Tag=" dB" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="AudioSettingsChanged" AutomationProperties.Name="Усиление микрофона в dB" />
+                                    <TextBlock Grid.Row="4" Text="Громкость системы" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <Slider x:Name="SystemVolumeSlider" Grid.Row="4" Grid.Column="1" Style="{StaticResource AudioSlider}" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="100" Tag="%" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="AudioSettingsChanged" AutomationProperties.Name="Громкость системы в процентах" />
+                                    <TextBlock Grid.Row="5" Text="Discord отдельной&#10;дорожкой" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" ToolTip="При системном захвате Discord уже есть в системной дорожке. В общий микс повторно не добавляется." />
+                                    <CheckBox x:Name="DiscordCheck" Grid.Row="5" Grid.Column="1" Style="{StaticResource SettingsToggle}" HorizontalAlignment="Right" VerticalAlignment="Center" Content="Discord отдельной дорожкой" AutomationProperties.Name="Discord отдельной дорожкой" ToolTip="При системном захвате Discord уже есть в системной дорожке. В общий микс повторно не добавляется." />
+                                    <TextBlock Grid.Row="6" Text="Звуки сохранения&#10;и ошибок" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <CheckBox x:Name="SoundCheck" Grid.Row="6" Grid.Column="1" Style="{StaticResource SettingsToggle}" HorizontalAlignment="Right" VerticalAlignment="Center" Content="Звуки сохранения и ошибок" AutomationProperties.Name="Звуки сохранения и ошибок" />
+                                    <TextBlock Grid.Row="7" Text="Источник звука" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <ComboBox x:Name="AudioMode" Grid.Row="7" Grid.Column="1" Style="{StaticResource SettingsCombo}" VerticalAlignment="Center" AutomationProperties.Name="Источник звука">
+                                        <ComboBoxItem Content="Только игра" Tag="Game" />
+                                        <ComboBoxItem Content="Весь системный звук" Tag="System" />
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel x:Name="LegacyOutputFields" Visibility="{Binding ElementName=OutputNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="0.26*" MinWidth="124" />
+                                        <ColumnDefinition Width="0.74*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="56" />
+                                        <RowDefinition Height="56" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Место&#10;сохранения" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <Border Grid.Column="1" Style="{StaticResource SettingsPathSurface}" VerticalAlignment="Center">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition />
+                                                <ColumnDefinition Width="38" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="FolderBox" Style="{StaticResource SettingsPathText}" AutomationProperties.Name="Место сохранения" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
+                                            <Button x:Name="BrowseOutputButton" Grid.Column="1" Click="Browse_Click" Style="{StaticResource RewindIconButton}" Width="36" Height="38" Padding="0" ToolTip="Выбрать папку клипов" AutomationProperties.Name="Выбрать папку клипов">
+                                                <Image Source="{StaticResource FigmaBrowseFolderIcon}" Width="26" Height="26" Stretch="Uniform" />
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Grid.Row="1" Text="Временные&#10;файлы" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource SettingsPathSurface}" VerticalAlignment="Center">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition />
+                                                <ColumnDefinition Width="38" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="BufferFolderBox" Style="{StaticResource SettingsPathText}" AutomationProperties.Name="Временные файлы" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
+                                            <Button x:Name="BrowseBufferButton" Grid.Column="1" Click="BrowseBuffer_Click" Style="{StaticResource RewindIconButton}" Width="36" Height="38" Padding="0" ToolTip="Выбрать папку временных файлов" AutomationProperties.Name="Выбрать папку временных файлов">
+                                                <Image Source="{StaticResource FigmaBrowseFolderIcon}" Width="26" Height="26" Stretch="Uniform" />
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                                <Grid Margin="0,24,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="Группировать записи&#10;по названию приложения" Style="{StaticResource SettingsLabel}" />
+                                        <TextBlock Text="Создаёт отдельные папки по названию приложения" Style="{StaticResource SettingsHelp}" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="GroupByApplicationCheck" Grid.Column="1" Style="{StaticResource SettingsToggle}" VerticalAlignment="Center" Content="Группировать записи по названию приложения" AutomationProperties.Name="Группировать записи по названию приложения" ToolTip="Включено — подпапка приложения. Выключено — клипы прямо в выбранной папке. Сохраняется при включении буфера." />
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel x:Name="HotkeyFields" Visibility="{Binding ElementName=HotkeysNav, Path=IsChecked, Converter={StaticResource PageVisibility}}" PreviewKeyDown="HotkeyFields_PreviewKeyDown" LostKeyboardFocus="HotkeyFields_LostKeyboardFocus" IsVisibleChanged="HotkeyFields_IsVisibleChanged">
+                                <WrapPanel Margin="0,0,0,8" Orientation="Horizontal">
+                                    <TextBlock Text="Включить Rewind" Style="{StaticResource SettingsLabel}" Margin="0,0,0,6" Width="216" />
+                                    <Grid Width="273" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource HotkeyShortcutSurface}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="ToggleHotkeyBox" Style="{StaticResource HotkeyShortcutText}" AutomationProperties.Name="Сочетание: Включить Rewind" />
+                                                <Button x:Name="ToggleHotkeyEditButton" Grid.Column="1" Content="Изменить" Tag="Toggle" Click="HotkeyEdit_Click" Style="{StaticResource HotkeyEditButton}" AutomationProperties.Name="Изменить сочетание: Включить Rewind" />
+                                            </Grid>
+                                        </Border>
+                                        <CheckBox x:Name="ToggleHotkeyEnabledCheck" Grid.Column="1" Tag="Toggle" Click="HotkeyEnabled_Click" Style="{StaticResource SettingsToggle}" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="Горячая клавиша: Включить Rewind" />
+                                    </Grid>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,0,0,8" Orientation="Horizontal">
+                                    <TextBlock Text="Сохранить Rewind" Style="{StaticResource SettingsLabel}" Margin="0,0,0,6" Width="216" />
+                                    <Grid Width="273" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource HotkeyShortcutSurface}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="HotkeyBox" Style="{StaticResource HotkeyShortcutText}" AutomationProperties.Name="Сочетание: Сохранить Rewind" />
+                                                <Button x:Name="SaveHotkeyEditButton" Grid.Column="1" Content="Изменить" Tag="Save" Click="HotkeyEdit_Click" Style="{StaticResource HotkeyEditButton}" AutomationProperties.Name="Изменить сочетание: Сохранить Rewind" />
+                                            </Grid>
+                                        </Border>
+                                        <CheckBox x:Name="SaveHotkeyEnabledCheck" Grid.Column="1" Tag="Save" Click="HotkeyEnabled_Click" Style="{StaticResource SettingsToggle}" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="Горячая клавиша: Сохранить Rewind" />
+                                    </Grid>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,0,0,8" Orientation="Horizontal">
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,0,6" Width="216">
+                                        <TextBlock Text="Начать запись" Style="{StaticResource SettingsLabel}" />
+                                    </StackPanel>
+                                    <Grid Width="273" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource HotkeyShortcutSurface}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="RecordingHotkeyBox" Text="—" Style="{StaticResource HotkeyShortcutText}" AutomationProperties.Name="Сочетание: Начать запись" />
+                                                <Button x:Name="RecordingHotkeyEditButton" Grid.Column="1" Content="Изменить" Tag="Recording" Click="HotkeyEdit_Click" Style="{StaticResource HotkeyEditButton}" AutomationProperties.Name="Изменить сочетание: Начать запись" />
+                                            </Grid>
+                                        </Border>
+                                        <CheckBox x:Name="RecordingHotkeyEnabledCheck" Grid.Column="1" Tag="Recording" Click="HotkeyEnabled_Click" Style="{StaticResource SettingsToggle}" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="Горячая клавиша: Начать запись" />
+                                    </Grid>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,0,0,8" Orientation="Horizontal">
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,0,6" Width="216">
+                                        <TextBlock Text="Скриншот" Style="{StaticResource SettingsLabel}" />
+                                    </StackPanel>
+                                    <Grid Width="273" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource HotkeyShortcutSurface}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="ScreenshotHotkeyBox" Text="—" Style="{StaticResource HotkeyShortcutText}" AutomationProperties.Name="Сочетание: Скриншот" />
+                                                <Button x:Name="ScreenshotHotkeyEditButton" Grid.Column="1" Content="Изменить" Tag="Screenshot" Click="HotkeyEdit_Click" Style="{StaticResource HotkeyEditButton}" AutomationProperties.Name="Изменить сочетание: Скриншот" />
+                                            </Grid>
+                                        </Border>
+                                        <CheckBox x:Name="ScreenshotHotkeyEnabledCheck" Grid.Column="1" Tag="Screenshot" Click="HotkeyEnabled_Click" Style="{StaticResource SettingsToggle}" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="Горячая клавиша: Скриншот" />
+                                    </Grid>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,0,0,8" Orientation="Horizontal">
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,0,6" Width="216">
+                                        <TextBlock Text="Микрофон" Style="{StaticResource SettingsLabel}" />
+                                    </StackPanel>
+                                    <Grid Width="273" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource HotkeyShortcutSurface}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="MicrophoneHotkeyBox" Text="—" Style="{StaticResource HotkeyShortcutText}" AutomationProperties.Name="Сочетание: Микрофон" />
+                                                <Button x:Name="MicrophoneHotkeyEditButton" Grid.Column="1" Content="Изменить" Tag="Microphone" Click="HotkeyEdit_Click" Style="{StaticResource HotkeyEditButton}" AutomationProperties.Name="Изменить сочетание: Микрофон" />
+                                            </Grid>
+                                        </Border>
+                                        <CheckBox x:Name="MicrophoneHotkeyEnabledCheck" Grid.Column="1" Tag="Microphone" Click="HotkeyEnabled_Click" Style="{StaticResource SettingsToggle}" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="Горячая клавиша: Микрофон" />
+                                    </Grid>
+                                </WrapPanel>
+                            </StackPanel>
+                            <StackPanel x:Name="AdvancedPanel" Visibility="{Binding ElementName=AdvancedNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                                <Grid x:Name="AdvancedFields">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="0.4493*" />
+                                        <ColumnDefinition Width="0.5507*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Буфер на диске" Style="{StaticResource SettingsLabel}" Margin="0,0,12,8" />
+                                    <Border Grid.Column="1" Style="{StaticResource SettingsPathSurface}" Margin="0,0,0,8" ToolTip="От 128 до 16384 MB. Аудио дополнительно хранится в оперативной памяти.">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="BufferLimitBox" Style="{StaticResource AdvancedNumberText}" AutomationProperties.Name="Буфер на диске в MB" />
+                                            <TextBlock x:Name="BufferLimitUnit" Grid.Column="1" Text="MB" Style="{StaticResource AdvancedUnitText}" />
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Grid.Row="1" Text="Порог тишины&#10;микрофона" Style="{StaticResource SettingsLabel}" Margin="0,0,12,8" />
+                                    <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource SettingsPathSurface}" Margin="0,0,0,8" ToolTip="От −90 до −10 dBFS.">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="ThresholdBox" Style="{StaticResource AdvancedNumberText}" AutomationProperties.Name="Порог тишины микрофона в dBFS" />
+                                            <TextBlock x:Name="ThresholdUnit" Grid.Column="1" Text="dBFS" Style="{StaticResource AdvancedUnitText}" />
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Grid.Row="2" Text="Сдвиг аудио" Style="{StaticResource SettingsLabel}" VerticalAlignment="Top" Margin="0,9,12,0" />
+                                    <StackPanel Grid.Row="2" Grid.Column="1">
+                                        <Border Style="{StaticResource SettingsPathSurface}" ToolTip="От −2000 до 2000 мс.">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="OffsetBox" Style="{StaticResource AdvancedNumberText}" AutomationProperties.Name="Сдвиг аудио в миллисекундах" />
+                                                <TextBlock x:Name="OffsetUnit" Grid.Column="1" Text="мс" Style="{StaticResource AdvancedUnitText}" />
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock x:Name="AudioOffsetHelp" Text="При положительном сдвиге звук на видео записывается раньше, при отрицательном — позже. Оставьте 0 мс, если коррекция синхронизации не требуется." Style="{StaticResource SettingsHelp}" Margin="6,6,6,0" FontSize="12" />
+                                    </StackPanel>
+                                </Grid>
+                                <Expander x:Name="AdvancedExtras" Header="Технические параметры захвата" Style="{StaticResource SettingsExpander}" Margin="0,20,0,0">
+                                    <StackPanel Margin="0,12,0,0">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Без жёлтой рамки" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                            <CheckBox IsEnabled="{Binding ElementName=CaptureFields, Path=IsEnabled}" x:Name="HideBorderCheck" Grid.Column="1" Style="{StaticResource SettingsToggle}" AutomationProperties.Name="Без жёлтой рамки" ToolTip="Для игры — захват выбранного окна без рамки. Для рабочего стола — DXGI." />
+                                        </Grid>
+                                        <TextBlock Text="SDR · MKV · Исходное соотношение сторон сохраняется с полями. Сохранение начинается с ключевого кадра: возможен запас до 2 секунд. При сворачивании игры рабочий стол не захватывается; картинка может остановиться." Style="{StaticResource SettingsHelp}" Margin="0,10,0,0" />
+                                    </StackPanel>
+                                </Expander>
+                            </StackPanel>
+                        </Grid>
+                        <Grid x:Name="CaptureCompression" Visibility="{Binding ElementName=CaptureNav, Path=IsChecked, Converter={StaticResource PageVisibility}}" Margin="0,24,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <WrapPanel Orientation="Horizontal">
+                                <TextBlock Text="Сжимать MP4" Style="{StaticResource SettingsLabel}" TextWrapping="Wrap" />
+                                <Image x:Name="CompressionInfoIcon" Source="{StaticResource FigmaInfoIcon}" Style="{StaticResource SettingsInfoIcon}" Width="22.5" Height="22.5" Margin="4,0,0,0" VerticalAlignment="Center">
+                                    <Image.ToolTip><ToolTip Style="{StaticResource SettingsInfoToolTip}" Content="Уменьшает размер файла с минимальной потерей качества" /></Image.ToolTip>
+                                </Image>
+                            </WrapPanel>
+                            <CheckBox x:Name="CompressCheck" Grid.Column="1" Style="{StaticResource SettingsToggle}" Click="CompressionChanged" VerticalAlignment="Center" AutomationProperties.Name="Сжимать MP4" ToolTip="Сжимать сохранённые клипы в MP4 в фоне" />
+                        </Grid>
+                        <StackPanel Visibility="{Binding ElementName=OutputNav, Path=IsChecked, Converter={StaticResource PageVisibility}}" Margin="0,18,0,0">
+                            <Expander x:Name="OutputExtras" Header="Папки приложений и сжатие MP4" Style="{StaticResource SettingsExpander}">
+                                <StackPanel Margin="0,10,0,0">
+                                    <TextBlock Text="Название папки игры / приложения" Style="{StaticResource SettingsLabel}" />
+                                    <Border Style="{StaticResource SettingsPathSurface}" IsEnabled="{Binding ElementName=CaptureFields, Path=IsEnabled}" Margin="0,8,0,0">
+                                        <TextBox x:Name="GameNameBox" IsEnabled="{Binding ElementName=CaptureFields, Path=IsEnabled}" Style="{StaticResource SettingsPathText}" ToolTip="Пусто — имя exe. Сохраняется для этой игры." />
+                                    </Border>
+                                    <TextBlock Text="Используется при включённой группировке. Пустое название — имя приложения." Style="{StaticResource SettingsHelp}" Margin="0,6,0,16" />
+                                    <TextBlock x:Name="CompressionProfileText" Foreground="{StaticResource RewindMuted}" FontSize="12" />
+                                    <Button x:Name="ImportCompressionButton" Content="Настройки из MP4 Compressor…" Click="ImportCompression_Click" Style="{StaticResource AudioTestButton}" Margin="0,10,0,6" HorizontalAlignment="Left" />
+                                    <TextBlock Text="Оригинал остаётся рядом. Один клип за раз; все звуковые дорожки сохраняются. Сжатие повышает нагрузку на GPU, но не останавливает буфер." Style="{StaticResource SettingsHelp}" />
+                                    <TextBlock x:Name="CompressionStatusText" Foreground="{StaticResource RewindActive}" FontSize="12" Margin="0,8,0,0" Text="Очередь сжатия пуста" />
+                                </StackPanel>
+                            </Expander>
+                            <Button x:Name="OpenOutputFolderButton" Content="Открыть папку клипов" Click="OpenFolder_Click" HorizontalAlignment="Left" Background="Transparent" Foreground="{StaticResource RewindMuted}" Padding="0,8" Margin="0,4,0,0" FontSize="12" />
+                        </StackPanel>
+                        <StackPanel x:Name="HotkeyHelp" Visibility="{Binding ElementName=HotkeysNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
+                            <TextBlock x:Name="HotkeyHint" Style="{StaticResource SettingsHelp}" Margin="0,4,0,0" />
+                            <TextBlock x:Name="HotkeyEditStatus" Style="{StaticResource SettingsHelp}" Foreground="{StaticResource RewindWarning}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                        <StackPanel Visibility="Collapsed">
+                            <TextBlock x:Name="StatusText" />
+                            <TextBlock x:Name="DetailText" />
+                            <ProgressBar x:Name="MicMeter" Maximum="60" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+        <StackPanel Grid.Row="1" Margin="0,8,0,0" MaxWidth="680" MinHeight="0">
+            <TextBlock x:Name="MainStateText" Style="{StaticResource RewindHelper}" MaxHeight="58" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
+            <TextBlock x:Name="WarningText" Style="{StaticResource RewindHelper}" Foreground="{StaticResource RewindWarning}" MaxHeight="58" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
+            <TextBlock x:Name="LastClipText" Style="{StaticResource RewindHelper}" MaxHeight="38" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding ElementName=MainStateText, Path=Text}" Value="" />
+                                <Condition Binding="{Binding ElementName=WarningText, Path=Text}" Value="" />
+                                <Condition Binding="{Binding ElementName=LastClipText, Path=Text}" Value="" />
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+        </StackPanel>
+    </Grid>
+</Window>

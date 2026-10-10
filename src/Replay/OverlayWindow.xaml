@@ -1,0 +1,38 @@
+<Window x:Class="Replay.OverlayWindow" x:ClassModifier="internal"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Уведомление Rewind" Width="496" Height="157" WindowStyle="None" ResizeMode="NoResize"
+ AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False" ShowActivated="False" Topmost="True"
+ Focusable="False" IsHitTestVisible="False" UseLayoutRounding="True" SnapsToDevicePixels="True">
+ <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="OverlayVectors.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
+ <Viewbox Stretch="Uniform">
+  <Border x:Name="Card" Width="496" Height="157" Background="#CC1E1E1E" BorderBrush="#CC4A4949" BorderThickness="1" CornerRadius="30">
+   <Grid>
+   <Grid x:Name="LargeFields" Margin="29,0,18,0">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="MediaGap" Width="20"/><ColumnDefinition x:Name="MediaColumn" Width="171"/></Grid.ColumnDefinitions>
+    <StackPanel x:Name="Copy" VerticalAlignment="Top" Margin="0,10,0,0">
+     <TextBlock x:Name="Heading" Foreground="White" FontFamily="{StaticResource CoolveticaFont}" FontWeight="Normal" FontSize="43.551216" Height="52"/>
+     <Viewbox x:Name="BodyBox" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Height="62" Margin="0,14,0,0">
+      <TextBlock x:Name="Body" Foreground="White" FontFamily="{StaticResource InterFont}" FontSize="25.647058" LineHeight="31" LineStackingStrategy="BlockLineHeight"/>
+     </Viewbox>
+     <Viewbox x:Name="MetadataBox" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Height="31">
+      <TextBlock x:Name="Metadata" Foreground="#6BFFFFFF" FontFamily="{StaticResource InterFont}" FontSize="25.647058"/>
+     </Viewbox>
+    </StackPanel>
+    <Border x:Name="ThumbnailFrame" Grid.Column="2" Width="171" Height="119" CornerRadius="14,11,14,14" VerticalAlignment="Center">
+     <Border.Background><ImageBrush x:Name="ThumbnailBrush" Stretch="UniformToFill"/></Border.Background>
+    </Border>
+    <Image x:Name="MicrophoneIcon" Grid.Column="2" Width="88.300972" Height="88.300972" HorizontalAlignment="Right" Margin="0,0,7.7,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+    <Image x:Name="LoadingRing" Grid.Column="2" Width="93" Height="93" VerticalAlignment="Center" Visibility="Collapsed" Source="{StaticResource OverlayFigmaSpinner}" RenderTransformOrigin="0.5,0.5">
+     <Image.RenderTransform><RotateTransform x:Name="SpinnerRotation"/></Image.RenderTransform>
+    </Image>
+   </Grid>
+   <Grid x:Name="MicroFields" Margin="29,0,18,0" Visibility="Collapsed">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="151"/><ColumnDefinition Width="74.16667"/><ColumnDefinition Width="9"/><ColumnDefinition Width="25.6667"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <TextBlock Text="Rewind" Foreground="White" FontFamily="{StaticResource CoolveticaFont}" FontSize="43.551216" Height="52" VerticalAlignment="Top" Margin="0,1,0,0"/>
+    <TextBlock x:Name="MicroBody" Grid.Column="1" Grid.ColumnSpan="4" Foreground="White" FontFamily="{StaticResource InterFont}" FontSize="25.647058" VerticalAlignment="Top" Margin="0,14,0,0"/>
+    <Image x:Name="CompletionCheck" Grid.Column="3" Width="25.6667" Height="19.25" VerticalAlignment="Top" Margin="0,20.16667,0,0" Source="{StaticResource OverlayFigmaCheck}" Visibility="Collapsed"/>
+   </Grid>
+   </Grid>
+  </Border>
+ </Viewbox>
+</Window>

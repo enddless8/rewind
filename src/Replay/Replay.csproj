@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Rewind</AssemblyName>
+    <RootNamespace>Replay</RootNamespace>
+    <Product>Rewind</Product>
+    <Title>Rewind</Title>
+    <Description>Запись экрана и буфер Rewind</Description>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.2.6</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../assets/app/Rewind.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="NAudio.Wasapi" Version="2.3.0" /></ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="FidelityChecks" /></ItemGroup>
+  <ItemGroup><Resource Include="../../assets/app/Rewind.ico" Link="assets/app/Rewind.ico" /></ItemGroup>
+  <ItemGroup><Resource Include="../../assets/tray/RewindTray.ico" Link="assets/tray/RewindTray.ico" /></ItemGroup>
+  <ItemGroup><Resource Include="../../assets/fonts/coolvetica.otf" Link="assets/fonts/coolvetica.otf" /><Resource Include="../../assets/fonts/Inter_28pt-Regular.ttf" Link="assets/fonts/Inter_28pt-Regular.ttf" /><Resource Include="../../assets/fonts/CoolveticaLight.ttf" Link="assets/fonts/CoolveticaLight.ttf" /></ItemGroup>
+</Project>
