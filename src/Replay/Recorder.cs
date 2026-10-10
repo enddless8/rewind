@@ -32,6 +32,7 @@ public sealed partial class Recorder : IAsyncDisposable
     // Protected by files. A save consumes logical history, never the shared producer.
     private double rewindSaveCutoff = double.NegativeInfinity;
     private double? rewindRollbackCutoff;
+    internal RewindVideoExport VideoExport { get; set; } = new();
     private double RewindHistoryStart => Math.Max(rewindSince, rewindSaveCutoff);
     public async Task RestartCapture()
     {
@@ -342,21 +343,22 @@ public sealed partial class Recorder : IAsyncDisposable
             if (mixInputs.Count > 0) args.AddRange(["-metadata:s:a:0", "title=Mix", "-disposition:a:0", "default"]);
             for (var i = 0; i < tracks.Count; i++) args.AddRange([$"-metadata:s:a:{i + 1}", $"title={tracks[i].Name}", $"-disposition:a:{i + 1}", "0"]);
             args.AddRange(["-y", temp]);
-            stage = "mux";
+            stage = "export";
             SaveTiming.Current?.Mark("video-processing-started");
-            var result = await MediaTools.Run("ffmpeg", args, 180);
-            SaveTiming.Current?.Mark("video-aac-mux-finalization-completed");
-            if (result.Code != 0) throw new IOException("Не удалось собрать клип: " + result.Error);
-            stage = "verify";
-            var probe = await MediaTools.Run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", temp]);
-            using var document = JsonDocument.Parse(probe.Output);
-            var streams = document.RootElement.GetProperty("streams");
-            if (probe.Code != 0 || !streams.EnumerateArray().Any(s => s.GetProperty("codec_type").GetString() == "video") || streams.GetArrayLength() != 1 + tracks.Count + (mixInputs.Count > 0 ? 1 : 0)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
+            var exported = await VideoExport.Run(Encoder, selected[0].Path, args, temp, async () =>
+            {
+                var probe = await MediaTools.Run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", temp]);
+                if (probe.Code != 0 || !string.IsNullOrWhiteSpace(probe.Error)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
+                using var document = JsonDocument.Parse(probe.Output);
+                var streams = document.RootElement.GetProperty("streams");
+                if (!streams.EnumerateArray().Any(s => s.GetProperty("codec_type").GetString() == "video") || streams.GetArrayLength() != 1 + tracks.Count + (mixInputs.Count > 0 ? 1 : 0)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
+            });
             var final = Path.Combine(folder, id + ".mkv");
             SaveTiming.Current?.Mark("media-validation-completed");
             SaveTiming.Current?.Associate(final);
             var metadata = new { GameName, Encoder, CaptureBackend, HideDisplayBorder = settings.HideDisplayBorder, Duration = duration, CaptureMode = settings.CaptureMode, AudioMode = settings.AudioMode, AudioOffsetMs = settings.AudioOffsetMs, Sync = "WASAPI frame position anchored to QPC; video epoch estimated from pre-encode frame arrival", Warnings = clipWarnings, RemovedCaptureGapSeconds = Math.Max(0, end - start - duration), Tracks = reports,
                 ActualStart = start, ActualEnd = end, AcceptedSaveBoundary = requested, PreviousSaveCutoff = double.IsFinite(previousCutoff) ? (double?)previousCutoff : null,
+                ExportDecoder = exported.Decoder, HardwareDecodeFallback = exported.SoftwareFallback,
                 CaptureDiagnostics = tracks.ToDictionary(t => t.Name, t => new { t.DeviceName, t.CaptureFormat, t.MissingFrames, t.Discontinuities }) };
             readyToPublish = true; stage = "publish";
             var metadataWarning = await ClipFiles.Publish(temp, final, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
