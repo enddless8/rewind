@@ -8,12 +8,12 @@ using Replay;
 
 internal static class LiveRecording
 {
-    internal static async Task<int> Run(string root)
+    internal static async Task<int> Run(string root, int seconds = 30, bool parallelAudio = false)
     {
         var privateFiles = new[] { "settings.json", "compression-queue.json", "errors.log" }.Select(n => Path.Combine(Settings.DataDirectory, n))
             .ToDictionary(p => p, p => File.Exists(p) ? File.ReadAllBytes(p) : null);
         var stages = new List<object>();
-        SaveTiming.Observed += (_, stage, elapsed, details) => stages.Add(new { stage, elapsed, details });
+        SaveTiming.Observed += (_, stage, elapsed, details) => { lock (stages) stages.Add(new { stage, elapsed, details }); };
         Environment.SetEnvironmentVariable("REWIND_SAVE_TIMINGS_FILE", Path.Combine(root, "timing.jsonl"));
         var settings = new Settings { CaptureMode = "Desktop", HideDisplayBorder = true, AudioMode = "System", MicrophoneId = "off", Discord = false,
             Codec = "AV1", Height = 720, Fps = 30, BufferSeconds = 15, Quality = 27, MaxBitrateMbps = 15, GroupByApplication = false,
@@ -52,10 +52,10 @@ internal static class LiveRecording
                     copied = true;
                 }
                 return await MediaTools.Run(tool, args, timeout, bindLifetime: true);
-            });
+            }, parallelAudio: parallelAudio);
             await Task.Delay(12000); var replay = await recorder.Save();
             if (recorder.Recording.State != RecordingState.Recording || !recorder.Running) throw new Exception("SaveClip прервал запись.");
-            var stopTarget = origin + Math.Ceiling((session.StartedAt + 30 - origin) * settings.Fps) / settings.Fps + .025;
+            var stopTarget = origin + Math.Ceiling((session.StartedAt + seconds - origin) * settings.Fps) / settings.Fps + .025;
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(0, stopTarget - Native.Clock)));
             var stopping = recorder.StopRecording();
             var concurrentSave = recorder.Save();

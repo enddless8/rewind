@@ -45,3 +45,67 @@ its captured Stop owner and ReferenceEquals cleanup guard are reviewed separatel
 ```powershell
 .tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll concurrency artifacts/lifecycle-checks-new
 ```
+
+## Unified Export Stage 2
+
+Stage 2 измеряет те же retained 60/300/600-second источники, затем сравнивает
+настоящий `FinalizeFiles` с committed Stage 1 (`finalize … stage1`). Это offline
+экспорт сохранённых сегментов, не Stop-to-playable живой десятиминутной записи.
+Экспериментальный bounded scheduler для eligible записей от 45 секунд запускает до трёх
+независимых AAC jobs и один video-copy job, затем timestamp-preserving remux.
+Граф аудио, AAC quality, полная validation и retained-source fallback сохранены.
+Недостаточный запас свободного места оставляет Stage 1 combined scheduling.
+Дополнительные intermediates создаются только в unique attempt-owned directory.
+Он выключен по умолчанию: полное сравнение десятиминутных finalizers не подтвердило
+выигрыш total latency. CLI `finalize … parallel` / `parallel-<fault>` / benchmark /
+parallel checks включают candidate явно; default, `fast`, `stage1` и обычное
+приложение сохраняют Stage 1 scheduling. Историческое имя `fast` в сохранённых
+Stage 2 benchmark artifacts означает candidate; benchmark передаёт `parallel` явно.
+
+```powershell
+python dev/RecordingExportChecks/profile_long.py 60 3
+python dev/RecordingExportChecks/profile_long.py 300 3
+python dev/RecordingExportChecks/profile_long.py 600 3
+python dev/RecordingExportChecks/profile_long.py parallel 60 3
+python dev/RecordingExportChecks/profile_long.py parallel 300 3
+python dev/RecordingExportChecks/profile_long.py parallel 600 3
+python dev/RecordingExportChecks/profile_long.py disk
+python dev/RecordingExportChecks/benchmark_long.py
+python dev/RecordingExportChecks/benchmark_long.py verify
+$env:REWIND_RECORDING_TEST_ROOT = "$PWD/artifacts/unified-stage2/parallel-tests-new"
+python dev/RecordingExportChecks/parallel_checks.py
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll concurrency artifacts/unified-stage2/concurrency-new
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll live-long artifacts/unified-stage2/live
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll live-long-candidate artifacts/unified-stage2/live-candidate
+python dev/RecordingExportChecks/verify_stage2_live.py
+python dev/RecordingExportChecks/verify_stage2_live.py live-candidate
+python dev/RecordingExportChecks/verify_stage2_live.py snapshot
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll process-profile artifacts/unified-stage2/process-plumbing-new
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll process-profile artifacts/unified-stage2/process-periods-new periods
+```
+
+Benchmarks последовательные: не запускайте capture suites/другие CPU/GPU tests
+одновременно с измерением задержки. Профилируется wall time отдельно от суммарного
+process CPU time и process I/O; warm cache disk reads не означают raw SSD throughput.
+Completed benchmark results переиспользуются. Для нового измерения используйте
+новое test-owned имя/каталог; не удаляйте сохранённые источники или runtime data.
+`parallel_checks.py` проверяет System/Game routing, fractional trim, exact AAC
+payload/sample/PTS/priming/padding equality, worker failure/corruption, cancellation,
+exclusive output lock, ENOSPC seam, full-decoding fallback и cleanup после join.
+`concurrency` использует искусственную gate только для ownership/lifecycle checks,
+не для performance numbers. Проверяет реальные Recorder/Save/overlay и повторный
+Dispose, без запуска MainWindow или пользовательской compression queue.
+`live-long` измеряет настоящие QPC Stop, publication, WPF render и отдельное MP4
+compression, сохраняет snapshot для `verify_stage2_live.py`. Harness перенаправляет
+ClipFiles diagnostics в test root; production logging path не меняется.
+
+`ProcessProfile` анализирует ready `300-r2-stage1` output после paired benchmark;
+все варианты полностью декодируют 8970 video frames и audio. Сравнивает physical
+process lifetime с await elapsed, input pipe, job, readers и stats period, без
+изменений production MediaTools. `finalize … inspect-copy` сохраняет собственный
+unpublished attempt и native indices внутри своего test root для диагностики
+rejection. `verify_stage2_live.py snapshot` проверяет frozen real fractional Stop
+в `corrected-live-snapshot`: copied payload/pixel hashes, exact frame count/PTS,
+AAC samples/priming/padding и lossy head content. Candidate video-only worker
+использует exact plan frame cap: отдельный `-t` способен выдать extra tail packet;
+перед publication всё равно нужны прежние packet proof и full decode.

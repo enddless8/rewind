@@ -19,10 +19,16 @@ internal sealed class RecordingPacketExport
     internal sealed record Piece(string Path, Av1SegmentIndex Index, int First, int Stop);
     internal sealed record Plan(Snapshot Snapshot, ReadOnlyCollection<Piece> Pieces, Av1SegmentIndex Format, int Frames);
     internal sealed record Decision(Plan? Plan, string Reason);
-    internal sealed record Result(string Strategy, bool Fallback, string Reason, int CopiedFrames, int EncodedFrames);
+    internal sealed record Result(string Strategy, bool Fallback, string Reason, int CopiedFrames, int EncodedFrames, bool ParallelAudio = false);
     private readonly RewindVideoExport.Command run;
-    internal RecordingPacketExport(RewindVideoExport.Command? run = null) =>
+    private readonly bool parallelAudio;
+    // Stage 2 candidate is opt-in for the development harness: full 10-minute
+    // benchmarks did not establish a reliable total-latency improvement yet.
+    internal RecordingPacketExport(RewindVideoExport.Command? run = null, bool parallelAudio = false)
+    {
         this.run = run ?? ((tool, args, timeout) => MediaTools.Run(tool, args, timeout, bindLifetime: true));
+        this.parallelAudio = parallelAudio;
+    }
     private static string Number(double n) => n.ToString("F6", CultureInfo.InvariantCulture);
     private static long Grid(int n, int fps) => (long)Math.Round(n * 1000d / fps, MidpointRounding.AwayFromZero);
 
@@ -111,7 +117,10 @@ internal sealed class RecordingPacketExport
                 File.WriteAllText(concat, string.Concat(assembled.Select(p => "file '" + p.Path.Replace('\\', '/').Replace("'", "'\\''") +
                     "'\nduration " + Number(p.Count / (double)snapshot.Fps) + "\n")), new UTF8Encoding(false));
                 SaveTiming.Current?.Mark("recording-copy-aac-mux-started", new { Copied = plan.Frames - encoded, Encoded = encoded });
-                await Command("ffmpeg", CopyArguments(original, concat, snapshot.Fps), timeout);
+                var args = CopyArguments(original, concat, snapshot.Fps);
+                var parallel = parallelAudio && RecordingMuxSchedule.Suitable(snapshot, working);
+                if (parallel) await RecordingMuxSchedule.Run(snapshot, plan.Frames, args, working, temporary, a => Command("ffmpeg", a, timeout));
+                else await Command("ffmpeg", args, timeout);
                 SaveTiming.Current?.Mark("recording-copy-aac-mux-completed");
                 await verify(); SaveTiming.Current?.Mark("recording-validation-started");
                 var output = await Task.Run(() => Av1SegmentIndex.Read(temporary, cached: false));
@@ -122,7 +131,7 @@ internal sealed class RecordingPacketExport
                 if (!identities.SequenceEqual(snapshot.Segments.Select(s => Fingerprint(s.Path)).Concat(snapshot.AudioFiles.Select(Fingerprint))))
                     throw new IOException("Исходные данные записи изменились во время экспорта.");
                 SaveTiming.Current?.Mark("recording-validation-completed");
-                return new(encoded == 0 ? "av1-packet-copy" : "av1-boundary-copy", false, decision.Reason, plan.Frames - encoded, encoded);
+                return new(encoded == 0 ? "av1-packet-copy" : "av1-boundary-copy", false, decision.Reason, plan.Frames - encoded, encoded, parallel);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

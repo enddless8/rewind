@@ -90,7 +90,8 @@ def verify(fast,legacy,folder):
         ids=[sum((int(frame[10:40,k*80+10:k*80+70].mean())>128)<<k for k in range(8)) for frame in values]
         first=int(next(p['pts'] for p in source)/1000*30+.5)
         check(ids==list(range(first,first+encoded)),'Lossy boundary retains exact source frame IDs',ids)
-    dump(folder/'integrity.json',dict(passed=True,frames=len(av),copied=export['CopiedFrames'],encoded=encoded,audio_tracks=4))
+    audio_tracks=len(manifest['Tracks'])+int(any(t!='Discord' or manifest['Settings']['AudioMode']!='System' for t in manifest['Tracks']))
+    dump(folder/'integrity.json',dict(passed=True,frames=len(av),copied=export['CopiedFrames'],encoded=encoded,audio_tracks=audio_tracks))
 def run_checks():
     cases=[('aligned',0,6),('one-after',.033,5.233),('half',1,5),('one-before',1.967,5.2),('tail',0,5.1)]
     for name,start,end in cases:
