@@ -14,7 +14,8 @@ internal static class Program
             if (!root.StartsWith(artifacts + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Проверки разрешены только в artifacts.");
             Directory.CreateDirectory(root);
-            if (args[0] is "recording" or "edges" or "recovery" or "live" or "phase1-media")
+            ClipFiles.DiagnosticDirectoryForTests = Path.Combine(root, "diagnostics");
+            if (args[0] is "recording" or "edges" or "recovery" or "live" or "phase1-media" or "concurrency")
             {
                 var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
                 // The standalone harness has no App.xaml startup (and must not
@@ -26,6 +27,7 @@ internal static class Program
                 {
                     try { Environment.ExitCode = args[0] switch { "recording" => await RecordingTest.Run(root),
                         "edges" => await RecordingTest.RunEdges(root), "live" => await LiveRecording.Run(root),
+                        "concurrency" => await ConcurrencyChecks.Run(root),
                         "phase1-media" => await Phase1Media(root), _ => await RecoveryTest.Run(root) }; }
                     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
                     finally { app.Shutdown(); }

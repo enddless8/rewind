@@ -49,13 +49,20 @@ public partial class MainWindow
         await conventionalCommands.WaitAsync();
         try
         {
-            if (recorder == null) return;
-            var stopping = recorder.StopRecording();
+            var stopped = recorder;
+            if (stopped == null) return;
+            var stopping = stopped.StopRecording();
             UpdateMainPresentation();
             await stopping;
-            lastConventionalRecording = recorder.Recording;
+            lastConventionalRecording = stopped.Recording;
             ObserveRecordingOverlay(lastConventionalRecording);
-            if (!recordingWanted) { await recorder.DisposeAsync(); recorder = null; SetCaptureSettingsEnabled(true); }
+            if (!recordingWanted)
+            {
+                await stopped.DisposeAsync();
+                // Rewind ON may have installed a new producer while both
+                // callers awaited the old session's shared disposal task.
+                if (ReferenceEquals(recorder, stopped)) { recorder = null; SetCaptureSettingsEnabled(true); }
+            }
         }
         finally { conventionalCommands.Release(); UpdateMainPresentation(); }
     }

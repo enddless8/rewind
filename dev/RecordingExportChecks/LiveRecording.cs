@@ -10,7 +10,7 @@ internal static class LiveRecording
 {
     internal static async Task<int> Run(string root)
     {
-        var privateFiles = new[] { "settings.json", "compression-queue.json" }.Select(n => Path.Combine(Settings.DataDirectory, n))
+        var privateFiles = new[] { "settings.json", "compression-queue.json", "errors.log" }.Select(n => Path.Combine(Settings.DataDirectory, n))
             .ToDictionary(p => p, p => File.Exists(p) ? File.ReadAllBytes(p) : null);
         var stages = new List<object>();
         SaveTiming.Observed += (_, stage, elapsed, details) => stages.Add(new { stage, elapsed, details });

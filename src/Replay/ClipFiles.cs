@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 namespace Replay;
 internal static class ClipFiles
 {
+    // Standalone diagnostics harness only; normal application logging is unchanged.
+    internal static string? DiagnosticDirectoryForTests { get; set; }
     public static string ApplicationName(Settings settings, GameWindow? game) => game == null ? "Desktop" : settings.GameNames.GetValueOrDefault(game.Exe, game.Exe);
     public static string OutputFolder(string output, bool grouped, string? application) => grouped && application != null
         ? Path.Combine(output, SafeName(application)) : output;
@@ -60,8 +62,9 @@ internal static class ClipFiles
     {
         try
         {
-            Directory.CreateDirectory(Settings.DataDirectory);
-            var log = Path.Combine(Settings.DataDirectory, "errors.log");
+            var directory = DiagnosticDirectoryForTests ?? Settings.DataDirectory;
+            Directory.CreateDirectory(directory);
+            var log = Path.Combine(directory, "errors.log");
             if (File.Exists(log) && new FileInfo(log).Length > 2 * 1024 * 1024) File.Move(log, log + ".old", true);
             File.AppendAllText(log, $"{DateTimeOffset.Now:O} [{stage}] {path}\n{exception}\n\n");
         }

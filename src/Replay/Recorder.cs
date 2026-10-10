@@ -438,7 +438,15 @@ public sealed partial class Recorder : IAsyncDisposable
         if (progressTask != null) await progressTask;
         foreach (var track in tracks) track.Dispose();
     }
-    public async ValueTask DisposeAsync()
+    private readonly object disposalGate = new();
+    private Task? disposal;
+    public ValueTask DisposeAsync()
+    {
+        // Stop and Rewind ON can both join a finalizing session. Share its
+        // cleanup instead of disposing semaphores underneath the other caller.
+        lock (disposalGate) return new(disposal ??= DisposeCore());
+    }
+    private async Task DisposeCore()
     {
         await Stop();
         recordingPulseCancellation.Cancel();

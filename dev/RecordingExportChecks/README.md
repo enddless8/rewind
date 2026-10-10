@@ -31,3 +31,17 @@ Native `live` создаёт отдельный DXGI Recorder, conventional reco
 `verify_live.py` проверяет сохранённый конкретный 902-frame run в `live-eligible`, создавая отдельный legacy snapshot. Это анализатор сохранённого эксперимента, не универсальный assert для произвольной длительности. Повторный запуск не перезаписывает его `legacy` directory. Native live измеряет production Recorder/overlay в отдельном WPF harness, а не ручной клик в главном окне. Его Start/Stop scheduling повышает воспроизводимость copy-eligible случая, не меняя принятые QPC boundaries; доля eligible случаев этим тестом не измеряется.
 
 Production изменения ограничены recording finalization. `RewindPacketCopy`, `RewindVideoExport`, AV1 index и Phase 3A prototype не меняются. См. ignored `artifacts/unified-stage1/report.md` для результатов и ограничений.
+
+## Lifecycle and test isolation regression
+
+`concurrency` exercises the production Recorder with Stage 1 scheduling: gated
+Stop, continuing Rewind/Save/overlay, serialized next Start, and eight concurrent
+DisposeAsync callers sharing cleanup before repeated disposal. The standalone
+harness redirects ClipFiles fault diagnostics to `<test-root>/diagnostics` before
+running any suite. It checks that settings.json, compression-queue.json and the
+user errors.log stay unchanged. MainWindow is not constructed by these tests;
+its captured Stop owner and ReferenceEquals cleanup guard are reviewed separately.
+
+```powershell
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll concurrency artifacts/lifecycle-checks-new
+```
