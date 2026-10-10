@@ -63,6 +63,8 @@ public sealed partial class Recorder
         {
             var session = recordingSession;
             if (session == null || session.State is RecordingState.Idle or RecordingState.Error) return session?.Result;
+            using var timing = SaveTiming.Begin(Guid.NewGuid());
+            timing?.Mark("recording-stop-accepted");
             // T1 is frozen before waiting for a segment to close; later frames never extend the interval.
             await files.WaitAsync();
             try { session.Freeze(Native.Clock, reason); } finally { files.Release(); }
@@ -79,6 +81,7 @@ public sealed partial class Recorder
             } while (true);
             await files.WaitAsync();
             try { session.CompleteVideoOwnership(); } finally { files.Release(); }
+            timing?.Mark("recording-last-segment-finalized");
             return await session.FinalizeRecording(tracks);
         }
         finally { recordingCommands.Release(); }

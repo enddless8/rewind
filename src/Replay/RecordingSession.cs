@@ -42,6 +42,7 @@ internal sealed class RecordingSession
     public long VideoBytes => Interlocked.Read(ref videoBytes);
     public double Duration => Math.Max(0, StoppedAt - StartedAt);
     public IReadOnlyList<RecordingAudioWriter> Audio { get; }
+    internal RecordingPacketExport Exporter { get; set; } = new();
     public RecordingSession(Settings settings, string applicationName, string encoder, string backend, IReadOnlyList<AudioTrack> tracks, IReadOnlyList<string>? warnings = null)
     {
         Directory = Path.Combine(settings.BufferDirectory, ".recording-" + Guid.NewGuid().ToString("N"));
@@ -113,9 +114,10 @@ internal sealed class RecordingSession
     {
         foreach (var track in tracks) track.DetachRecording();
         foreach (var audio in Audio) await audio.Complete(StoppedAt + manifest.Settings.AudioOffsetMs / 1000.0);
+        SaveTiming.Current?.Mark("recording-pcm-completed");
         try
         {
-            Result = await FinalizeFiles(Directory, manifest);
+            Result = await FinalizeFiles(Directory, manifest, Exporter);
             State = manifest.State = manifest.Error == null ? RecordingState.Idle : RecordingState.Error;
             manifest.PublishedPath = Result.Path; PersistState();
             // Only our generated session, after confirmed publication. Failure always retains source files.
@@ -136,9 +138,10 @@ internal sealed class RecordingSession
             State = manifest.State = RecordingState.Error; PersistState(); ClipFiles.Log("recording-finalize", ex, Directory); return null;
         }
     }
-    private static async Task<SavedClip> FinalizeFiles(string directory, RecordingManifest manifest)
+    internal static async Task<SavedClip> FinalizeFiles(string directory, RecordingManifest manifest, RecordingPacketExport? exporter = null)
     {
         double first = double.NaN, last = double.NaN;
+        List<Segment> owned = [];
         var concat = Path.Combine(directory, "video.txt");
         using (var writer = new StreamWriter(concat, false, new UTF8Encoding(false)))
             foreach (var line in File.ReadLines(Path.Combine(directory, "segments.jsonl")))
@@ -151,6 +154,7 @@ internal sealed class RecordingSession
                 if (!double.IsNaN(last) && segment.Start > last + .15) break;
                 if (double.IsNaN(first)) first = segment.Start;
                 last = segment.End;
+                owned.Add(segment with { Path = path });
                 writer.WriteLine("file '" + path.Replace('\\', '/').Replace("'", "'\\''") + "'");
                 writer.WriteLine("duration " + Number(segment.End - segment.Start));
             }
@@ -159,8 +163,7 @@ internal sealed class RecordingSession
         var duration = end - start;
         if (!double.IsFinite(duration) || duration <= 0) throw new IOException("Нет завершённого видео; временные данные сохранены.");
         var settings = manifest.Settings;
-        // Re-encode the selected interval: stream-copy would silently start on a preceding 2s GOP.
-        // Only finalization adds an encoder; active recording uses the sole shared capture/NVENC process.
+        // Retain the exact decoded-trim command as fallback on the same media.
         List<string> args = ["-hide_banner", "-v", "error", "-f", "concat", "-safe", "0", "-i", concat];
         foreach (var track in manifest.Tracks) args.AddRange(["-f", "s16le", "-ar", "48000", "-ac", "2", "-i", Path.Combine(directory, track + ".pcm")]);
         var audioStart = start - manifest.StartedAt;
@@ -178,18 +181,26 @@ internal sealed class RecordingSession
         args.AddRange(["-c:v", manifest.Encoder, "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", settings.Quality.ToString(), "-b:v", "0",
             "-maxrate", settings.MaxBitrateMbps + "M", "-bufsize", settings.MaxBitrateMbps * 2 + "M", "-bf", "0", "-r", settings.Fps.ToString(),
             "-c:a", "aac", "-b:a", "160k", "-t", Number(duration), "-y", temp]);
-        var result = await MediaTools.Run("ffmpeg", args, Math.Max(180, (int)Math.Min(int.MaxValue, duration * 3 + 60)), bindLifetime: true);
-        if (result.Code != 0) throw new IOException("Не удалось собрать запись: " + result.Error);
-        var probe = await MediaTools.Run("ffprobe", ["-v", "error", "-show_streams", "-of", "json", temp], bindLifetime: true);
-        using var json = JsonDocument.Parse(probe.Output);
-        if (probe.Code != 0 || json.RootElement.GetProperty("streams").GetArrayLength() != 1 + manifest.Tracks.Length + (mixed.Length > 0 ? 1 : 0)) throw new IOException("Проверка записи не пройдена.");
+        async Task Verify()
+        {
+            var probe = await MediaTools.Run("ffprobe", ["-v", "error", "-show_streams", "-of", "json", temp], bindLifetime: true);
+            using var json = JsonDocument.Parse(probe.Output);
+            if (probe.Code != 0 || json.RootElement.GetProperty("streams").GetArrayLength() != 1 + manifest.Tracks.Length + (mixed.Length > 0 ? 1 : 0)) throw new IOException("Проверка записи не пройдена.");
+        }
+        var snapshot = RecordingPacketExport.Snapshot.Create(owned, start, end, settings.Fps,
+            manifest.Tracks.Select(t => Path.Combine(directory, t + ".pcm")));
+        var export = await (exporter ?? new()).Run(snapshot, manifest.Encoder, settings, args, temp, Verify,
+            Math.Max(180, (int)Math.Min(int.MaxValue, duration * 3 + 60)));
         var folder = ClipFiles.OutputFolder(settings.OutputDirectory, settings.GroupByApplication, manifest.ApplicationName); System.IO.Directory.CreateDirectory(folder);
         var final = Path.Combine(folder, "recording-" + ClipFiles.NewId() + ".mkv");
         List<string> warnings = manifest.Warnings.ToList();
         if (manifest.Error != null) warnings.Add(manifest.Error);
         if ((manifest.StoppedAt ?? end) - end > .1) warnings.Add($"Последние {(manifest.StoppedAt ?? end) - end:F2} с недоступны после сбоя захвата.");
+        SaveTiming.Current?.Associate(final);
+        SaveTiming.Current?.Mark("recording-publication-started");
         var warning = await ClipFiles.Publish(temp, final, JsonSerializer.Serialize(new { Kind = "Recording", Duration = duration, manifest, ActualStart = start, ActualEnd = end,
-            Boundary = "Decoded trim to frame grid; video QPC epoch remains arrival-estimated", Warnings = warnings }, new JsonSerializerOptions { WriteIndented = true }));
+            Boundary = "Exact frame grid; video QPC epoch remains arrival-estimated", Export = export, Warnings = warnings }, new JsonSerializerOptions { WriteIndented = true }));
+        SaveTiming.Current?.Mark("recording-media-published", new { Path = final, export.Strategy });
         if (warning != null) warnings.Add(warning);
         return new(final, duration, warnings);
     }

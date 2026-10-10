@@ -205,7 +205,14 @@ internal static class RecordingTest
             Check(active.Recording.State == RecordingState.Error && active.Recording.Result != null && active.Recording.Error!.Contains("места") && active.Running, "Simulated low disk safely publishes partial and reports reason while Rewind survives");
             artifacts.Add(new { LowDisk = active.Recording }); await active.DisposeAsync(); active = null;
             // Producer loss: completed segments retained, no recovery gap spliced into the recording.
-            active = new(settings, game, display); await active.Start(); await active.StartRecording(); await Task.Delay(2900); await active.SimulateAccessLossForTest();
+            active = new(settings, game, display); await active.Start(); await active.StartRecording();
+            // Test loss AFTER the precondition under test: a confirmed, owned
+            // segment. A fixed 2.9s delay can kill WGC before its first closure
+            // under scheduling load, testing "no video yet" instead of recovery.
+            for (var attempt = 0; attempt < 120 && Directory.GetFiles(active.Recording.SessionDirectory!, "video-*.mkv").Length == 0; attempt++)
+                await Task.Delay(100);
+            Check(Directory.GetFiles(active.Recording.SessionDirectory!, "video-*.mkv").Length > 0, "Capture-loss fixture has a confirmed owned segment before interruption");
+            await active.SimulateAccessLossForTest();
             for (int i = 0; i < 200 && active.Recording.State != RecordingState.Error; i++) await Task.Delay(100);
             Check(active.Recording.State == RecordingState.Error && active.Recording.Result != null && active.Recording.Error!.Contains("Захват"), "Capture failure finalizes confirmed partial and preserves error reason");
             var partial = active.Recording.Result!; await active.RestartCapture(); await Task.Delay(2200);

@@ -124,6 +124,8 @@ internal sealed class OverlayNotificationService : IAsyncDisposable
         item.Window.Revive(); item.Window.ApplyNotification(notification);
         StartLifetime(item); Shown?.Invoke(notification);
         if (notification.Kind == OverlayNotificationKind.RewindSaved) SaveTiming.ForOperation(notification.SaveOperationId)?.OverlayDisplayed(dispatcher);
+        if (notification.Kind == OverlayNotificationKind.RecordingSaved && notification.MediaPath is { } recorded)
+            SaveTiming.ForMedia(recorded)?.OverlayDisplayed(dispatcher);
         if (notification.HasThumbnail) StartThumbnail(item);
     }
     private void RequestDrain()
@@ -175,6 +177,8 @@ internal sealed class OverlayNotificationService : IAsyncDisposable
                     };
                     StartLifetime(item); Shown?.Invoke(next.Notification);
                     if (next.Notification.Kind == OverlayNotificationKind.RewindSaved) SaveTiming.ForOperation(next.Notification.SaveOperationId)?.OverlayDisplayed(dispatcher);
+                    if (next.Notification.Kind == OverlayNotificationKind.RecordingSaved && next.Notification.MediaPath is { } recorded)
+                        SaveTiming.ForMedia(recorded)?.OverlayDisplayed(dispatcher);
                     if (next.Notification.HasThumbnail) StartThumbnail(item);
                 }
                 catch (Exception ex)
