@@ -37,6 +37,7 @@ public sealed partial class Recorder : IAsyncDisposable
     private double? rewindRollbackCutoff;
     internal RewindVideoExport VideoExport { get; set; } = new();
     internal RewindPacketCopy PacketCopy { get; set; } = new();
+    internal RewindHybridExport HybridExport { get; set; } = new();
     private double RewindHistoryStart => Math.Max(rewindSince, rewindSaveCutoff);
     public async Task RestartCapture()
     {
@@ -357,8 +358,7 @@ public sealed partial class Recorder : IAsyncDisposable
             args.AddRange(["-y", temp]);
             stage = "export";
             SaveTiming.Current?.Mark("video-processing-started");
-            var plan = await RewindPacketCopy.Inspect(exportSnapshot);
-            var exported = await PacketCopy.Run(plan, VideoExport, Encoder, selected[0].Path, args, temp, async () =>
+            var strategy = await HybridExport.Run(exportSnapshot, PacketCopy, VideoExport, Encoder, args, temp, async () =>
             {
                 var probe = await MediaTools.Run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", temp]);
                 if (probe.Code != 0 || !string.IsNullOrWhiteSpace(probe.Error)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
@@ -366,6 +366,7 @@ public sealed partial class Recorder : IAsyncDisposable
                 var streams = document.RootElement.GetProperty("streams");
                 if (!streams.EnumerateArray().Any(s => s.GetProperty("codec_type").GetString() == "video") || streams.GetArrayLength() != 1 + tracks.Count + (mixInputs.Count > 0 ? 1 : 0)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
             });
+            var exported = strategy.Export;
             var final = Path.Combine(folder, id + ".mkv");
             SaveTiming.Current?.Mark("media-validation-completed");
             SaveTiming.Current?.Associate(final);
@@ -373,6 +374,7 @@ public sealed partial class Recorder : IAsyncDisposable
                 ActualStart = start, ActualEnd = end, AcceptedSaveBoundary = requested, PreviousSaveCutoff = double.IsFinite(previousCutoff) ? (double?)previousCutoff : null,
                 ExportDecoder = exported.Video.Decoder, HardwareDecodeFallback = exported.Video.SoftwareFallback,
                 PacketCopyEligible = exported.Eligible, PacketCopyFallback = exported.CopyFallback, ExportPlanReason = exported.Reason,
+                strategy.HybridEligible, strategy.HybridFallback, strategy.HybridReason, strategy.EncodedFrames, strategy.CopiedFrames,
                 CaptureDiagnostics = tracks.ToDictionary(t => t.Name, t => new { t.DeviceName, t.CaptureFormat, t.MissingFrames, t.Discontinuities }) };
             readyToPublish = true; stage = "publish";
             var metadataWarning = await ClipFiles.Publish(temp, final, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
