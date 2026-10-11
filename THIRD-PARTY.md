@@ -2,7 +2,9 @@
 
 ## Scope of the Rewind license
 
-The root [LICENSE](LICENSE) applies to original Rewind source code and original scripts/documentation: Copyright (c) 2026 enddless8. It does **not** replace third-party licenses or automatically license fonts, imported SVGs, supplied artwork, adapted external code, or bundled executables. Approval of an asset's visual design does not itself establish redistribution rights.
+The root [LICENSE](LICENSE) contains GNU GPL version 3. Original Rewind source code, original scripts/documentation and the adapted MP4 COMPRESSOR portions included in Rewind are licensed under GPL-3.0-or-later: version 3 or, at the recipient's option, any later version. Both coauthors have approved this scope: Copyright (c) 2026 enddless8; Copyright (c) 2026 hwydo/joygasm. See [NOTICE](NOTICE) for the project and adapted-code notices. Previously published MIT versions retain their original terms; the [historical MIT text](docs/licensing-transition/LICENSE-MIT-historical.txt) is preserved and does not dual-license the current GPL edition.
+
+The project license does **not** replace third-party licenses or automatically license fonts, imported SVGs, supplied artwork, other external code, or bundled executables. Approval of an asset's visual design does not itself establish redistribution rights. Missing provenance documentation is not, by itself, evidence of infringement. These open questions concern redistribution of the affected materials and do not block the original-code license change.
 
 The inventory below was checked against `Replay.csproj`, restored NuGet metadata, build scripts, font name tables, and the locally installed FFmpeg on 2026-10-10. There are no tracked third-party DLL/EXE files in the source repository. Local tools and generated distributions remain excluded from Git.
 
@@ -16,11 +18,11 @@ The existing build publishes a **self-contained** Windows application, so the di
 
 `NAudio.Wasapi` 2.3.0 is the direct NuGet dependency; `NAudio.Core` 2.3.0 is its only restored transitive package. Both are MIT, Mark Heath and contributors. The restored package metadata points to repository commit [`c89fee940ee6f8d7374d18714a6b85d8b7a18ab0`](https://github.com/naudio/NAudio/tree/c89fee940ee6f8d7374d18714a6b85d8b7a18ab0). Keep the upstream copyright and full MIT text below with distributions. Package metadata reports © Mark Heath 2026; the upstream license itself uses Copyright 2020 Mark Heath, retained below.
 
-## FFmpeg and its bundled libraries — GPLv3, not Rewind MIT
+## FFmpeg and its bundled libraries — separate GPLv3 component
 
 FFmpeg: https://ffmpeg.org/ — Windows essentials build supplied by [Gyan](https://www.gyan.dev/ffmpeg/builds/). The installed build is `9.0.2-essentials_build-www.gyan.dev`; its configuration includes `--enable-gpl --enable-version3 --enable-static` and no `--enable-nonfree`. Its bundled LICENSE is the GNU GPL version 3. It includes external libraries such as x264, x265, libaom and others; their source, build information and applicable notices also need to be accounted for.
 
-The Gyan README identifies FFmpeg source revision [`946fcce07b`](https://github.com/FFmpeg/FFmpeg/commit/946fcce07b) and contains build configuration/library versions. Rewind invokes `ffmpeg.exe` and `ffprobe.exe` as separate processes; it does not link their libraries into the managed application. This does not remove the obligations for redistributing those binaries and does not relicense them under MIT.
+The Gyan README identifies FFmpeg source revision [`946fcce07b`](https://github.com/FFmpeg/FFmpeg/commit/946fcce07b) and contains build configuration/library versions. Rewind invokes `ffmpeg.exe` and `ffprobe.exe` as separate processes; it does not link their libraries into the managed application. Rewind's license change does not replace those binaries' own licenses, copyright notices or redistribution obligations.
 
 Before binary redistribution:
 
@@ -34,7 +36,7 @@ Sources: [FFmpeg legal information](https://ffmpeg.org/legal.html), [GPLv3](http
 
 ## Fonts
 
-All three font binaries are embedded as WPF resources. They are not covered by Rewind's MIT license.
+All three font binaries are embedded as WPF resources. They retain their own copyright holders and licensing terms; Rewind's GPL-3.0-or-later grant does not relicense them.
 
 | Asset | Metadata / license | Status |
 | --- | --- | --- |
@@ -46,9 +48,9 @@ Typodermic distinguishes fixed artwork from working font embedding and says the 
 
 ## SVGs, application/tray artwork and adapted code
 
-- `assets/figma/*.svg` are exports from the user-supplied Rewind Figma design. The repository has no author/license manifest identifying the origin and redistribution terms of each vector. Figma access alone does not grant rights to imported third-party icon libraries. Confirm provenance and preserve any required attribution; do not label all exports MIT without evidence.
-- `assets/app/Rewind.png`, `Rewind.ico` and `assets/tray/RewindTray.png`, `RewindTray.ico` derive from user-approved raster artwork. The preparation scripts preserve that artwork. Its author/ownership and any separate redistribution license are not documented in the repository; the root MIT license does not automatically settle those rights.
-- `CompressionProfile.cs` identifies a port of `MP4 COMPRESSOR/mp4compressor/ffmpeg_tools.py`; README also records imported preset logic. The originating project's license/ownership evidence is not present. Confirm the author/license and required attribution for copied/adapted portions before redistribution; do not automatically relicense another project's code.
+- `assets/figma/*.svg` are exports from the user-supplied Rewind Figma design. The repository has no author/license manifest identifying the origin and redistribution terms of each vector. Figma access alone does not grant rights to imported third-party icon libraries. Confirm provenance and preserve any required attribution; do not assign the project license to all exports without evidence.
+- `assets/app/Rewind.png`, `Rewind.ico` and `assets/tray/RewindTray.png`, `RewindTray.ico` derive from user-approved raster artwork. The preparation scripts preserve that artwork. Its author/ownership and any separate redistribution license are not documented in the repository; Rewind's GPL license does not automatically settle those rights.
+- `CompressionProfile.cs` identifies a port of `MP4 COMPRESSOR/mp4compressor/ffmpeg_tools.py`; README also records imported preset logic. MP4 COMPRESSOR belongs to Rewind's second coauthor, hwydo/joygasm: Copyright (c) 2026 hwydo/joygasm. That author has approved GPL-3.0-or-later for the adapted portions included in Rewind. Those portions retain that author's copyright; ownership is not transferred to enddless8. The license of the standalone MP4 COMPRESSOR project is not changed.
 
 These are provenance questions, not a claim that any asset is infringing. Required assets remain trackable for review and the current application is unchanged.
 
@@ -56,7 +58,7 @@ These are provenance questions, not a claim that any asset is infringing. Requir
 
 Downloaded .NET SDK/runtime tools, FFmpeg, cached NAudio packages, local research/sample files and experimental FFmpeg builds live under ignored `.tools/` or `artifacts/`; they do not enter the first commit. The optional icon-preparation scripts require Python, Pillow and NumPy. Those external development dependencies are not vendored by this repository and retain their own licenses.
 
-Source Git hygiene and permission to redistribute a full application package are separate checks. Public source publication still needs the Coolvetica/provenance decisions above; binary publication additionally needs the FFmpeg Corresponding Source arrangement and exact runtime/font/library notices. The existing publish script does not copy the new root LICENSE or standalone Inter license either; address the complete notice packaging in a separate release-preparation change.
+The original-code license change is effective independently of the unresolved redistribution questions for Coolvetica, graphics and binary packaging. Public redistribution of those files needs the applicable permissions and notices; binary publication additionally needs the FFmpeg Corresponding Source arrangement and exact runtime/font/library notices. The existing publish script does not copy the root LICENSE or standalone Inter license either; address the complete notice packaging separately. The open questions above are not claims of infringement or an automatic license grant for those materials.
 
 NAudio MIT license:
 
