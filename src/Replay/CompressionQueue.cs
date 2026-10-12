@@ -17,6 +17,7 @@ public sealed record CompressionJob
 }
 public sealed class CompressionQueue : IAsyncDisposable
 {
+    private const int TerminalHistoryLimit = 50;
     private readonly object gate = new();
     private readonly List<CompressionJob> jobs;
     private readonly string stateFile;
@@ -40,6 +41,7 @@ public sealed class CompressionQueue : IAsyncDisposable
         }
         else jobs = [];
         foreach (var job in jobs.Where(j => j.State == "Running")) { job.State = "Pending"; job.Percent = 0; }
+        TrimHistory();
         worker = Task.Run(Work);
         wake.Release();
     }
@@ -56,11 +58,20 @@ public sealed class CompressionQueue : IAsyncDisposable
         }
         wake.Release(); return job.Id;
     }
+    private static bool IsTerminal(CompressionJob job) => job.State is "Completed" or "Failed" or "Cancelled";
+    // Hold gate after construction. Keep the existing enqueue-order retention policy;
+    // removing metadata never deletes the source or compressed output.
+    private void TrimHistory()
+    {
+        var terminal = 0;
+        for (var i = jobs.Count - 1; i >= 0; i--)
+            if (IsTerminal(jobs[i]) && ++terminal > TerminalHistoryLimit) jobs.RemoveAt(i);
+    }
     private void Persist()
     {
+        TrimHistory();
         Directory.CreateDirectory(Path.GetDirectoryName(stateFile)!);
-        var history = jobs.Where(j => j.State is "Completed" or "Failed").TakeLast(50).ToHashSet();
-        var saved = jobs.Where(j => j.State is "Pending" or "Running" || history.Contains(j));
+        var saved = jobs.Where(j => j.State is "Pending" or "Running" || IsTerminal(j));
         File.WriteAllText(stateFile + ".tmp", JsonSerializer.Serialize(saved, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(stateFile + ".tmp", stateFile, true);
     }
@@ -80,9 +91,9 @@ public sealed class CompressionQueue : IAsyncDisposable
                 timing?.Mark("compression-started", new { job.Id, job.Source });
                 try { Started?.Invoke(job with { }); }
                 catch (Exception ex) { ClipFiles.Log("compression-notification", ex, job.Source); }
-                try { await Compress(job); lock (gate) { job.State = "Completed"; job.Percent = 100; } }
+                try { await Compress(job); lock (gate) { job.State = "Completed"; job.Percent = 100; TrimHistory(); } }
                 catch (OperationCanceledException) when (cancel.IsCancellationRequested) { lock (gate) { job.State = "Pending"; job.Percent = 0; } }
-                catch (Exception ex) { lock (gate) { job.State = "Failed"; job.Error = ex.Message; } ClipFiles.Log("compression", ex, job.Source); }
+                catch (Exception ex) { lock (gate) { job.State = "Failed"; job.Error = ex.Message; TrimHistory(); } ClipFiles.Log("compression", ex, job.Source); }
                 SaveStateSafely();
                 timing?.Mark("compression-completed", new { job.State, job.Error, job.OriginalBytes, job.CompressedBytes });
                 if (job.State != "Pending") try { Finished?.Invoke(job with { }); } catch (Exception ex) { ClipFiles.Log("compression-notification", ex); }

@@ -35,6 +35,7 @@ internal static class Program
                 });
                 app.Run(); return Environment.ExitCode;
             }
+            if (args[0] == "compression-queue") return CompressionQueueChecks.Run(root, args.Length > 2 ? Path.GetFullPath(args[2]) : null).GetAwaiter().GetResult();
             if (args[0] == "process-profile") ProcessProfile.Run(root, args.Length > 2).GetAwaiter().GetResult();
             else if (args[0] == "process") MediaFailureChecks.Run(root).GetAwaiter().GetResult();
             else if (args[0] == "phase2-media")

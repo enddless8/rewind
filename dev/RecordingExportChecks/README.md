@@ -109,3 +109,21 @@ rejection. `verify_stage2_live.py snapshot` проверяет frozen real fract
 AAC samples/priming/padding и lossy head content. Candidate video-only worker
 использует exact plan frame cap: отдельный `-t` способен выдать extra tail packet;
 перед publication всё равно нужны прежние packet proof и full decode.
+
+## Compression queue retention regression
+
+`compression-queue` requires a new empty directory under `artifacts`. It uses
+explicit owned queue files and isolated diagnostics, and checks hashes of the
+actual private runtime files before and after. No MainWindow is constructed.
+Fixtures cover 1,000 completed entries, mixed states, 10,000 concurrent terminal
+transitions with snapshots, collectible pruned records, persistence/reload,
+real NVENC failure/retry, shutdown cancellation, interrupted-job recovery and
+byte preservation of original MKV/MP4 files. Cancellation in the production
+worker remains Pending for retry; synthetic terminal Cancelled entries are also
+retained within the same 50-entry window. Tests need Windows/NVENC and FFmpeg.
+An optional third argument selects a separate FFmpeg binary for full decoding.
+
+```powershell
+.tools/dotnet/dotnet.exe build dev/RecordingExportChecks/RecordingExportChecks.csproj -c Release --nologo
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll compression-queue artifacts/compression-queue-new
+```

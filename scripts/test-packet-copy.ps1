@@ -52,4 +52,3 @@ if ($LASTEXITCODE -ne 0) { throw 'Native packet-copy test build failed.' }
 # No MainWindow/user queue worker is constructed. Results/media stay local.
 & $dotnetPath (Join-Path $harnessDirectory 'bin/Release/net10.0-windows/FidelityChecks.dll') $testDirectory
 if ($LASTEXITCODE -ne 0) { throw "Native packet-copy tests failed. See $testDirectory/results.json" }
-
