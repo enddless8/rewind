@@ -140,6 +140,7 @@ public sealed class AudioTrack : IDisposable
         lock (gate)
         {
             recording?.Offer(packet);
+            foreach (var lease in leases) lease.Offer(packet);
             if (retention > 0) packets.Enqueue(packet);
             while (packets.Count > 0 && packets.Peek().End < observedAt - retention) packets.Dequeue();
         }
@@ -148,6 +149,31 @@ public sealed class AudioTrack : IDisposable
     }
     public List<AudioPacket> Snapshot(double start, double end)
     { lock (gate) return packets.Where(p => p.End > start && p.Start < end).ToList(); }
+    // References are immutable after ProcessPacket publishes them. A lease survives ring
+    // rollover and OFF/ON; only packets inside its original QPC bounds may join it.
+    private readonly List<PcmLease> leases = new();
+    internal sealed class PcmLease(AudioTrack owner, double start, double end, long limit) : IDisposable
+    {
+        internal readonly List<AudioPacket> Packets = new();
+        internal long Bytes;
+        internal bool Overflow;
+        internal void Offer(AudioPacket packet)
+        {
+            if (packet.End <= start || packet.Start >= end) return;
+            if (Bytes + packet.Data.Length > limit) { Overflow = true; return; }
+            Packets.Add(packet); Bytes += packet.Data.Length;
+        }
+        public void Dispose() { lock (owner.gate) owner.leases.Remove(this); }
+    }
+    internal PcmLease RetainPcm(double start, double end, long limit)
+    {
+        lock (gate)
+        {
+            var lease = new PcmLease(this, start, end, limit);
+            foreach (var packet in packets) lease.Offer(packet);
+            leases.Add(lease); return lease;
+        }
+    }
     internal void SetRetention(int seconds)
     { lock (gate) { retention = seconds; packets.Clear(); } }
     internal void AttachRecording(RecordingAudioWriter writer, double start)

@@ -34,11 +34,11 @@ public sealed partial class Recorder : IAsyncDisposable
     private string videoDirectory = "";
     // Protected by files. A save consumes logical history, never the shared producer.
     private double rewindSaveCutoff = double.NegativeInfinity;
-    private double? rewindRollbackCutoff;
+    private double rewindAcceptedCutoff = double.NegativeInfinity;
     internal RewindVideoExport VideoExport { get; set; } = new();
     internal RewindPacketCopy PacketCopy { get; set; } = new();
     internal RewindHybridExport HybridExport { get; set; } = new();
-    private double RewindHistoryStart => Math.Max(rewindSince, rewindSaveCutoff);
+    private double RewindHistoryStart => Math.Max(rewindSince, Math.Max(rewindSaveCutoff, rewindAcceptedCutoff));
     public async Task RestartCapture()
     {
         if (Recording.State is RecordingState.Recording) await StopRecording("Захват прерван; запись завершена до восстановления.");
@@ -182,8 +182,14 @@ public sealed partial class Recorder : IAsyncDisposable
     }
     private async Task ReadLog()
     {
+        var traceCapture = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("REWIND_SAVE_TIMINGS_FILE"));
         while (await video!.StandardError.ReadLineAsync() is { } line)
         {
+            if (traceCapture)
+            {
+                var opened = Regex.Match(line, "Opening '(.*)' for writing");
+                if (opened.Success) SaveTiming.CaptureSegmentOpened(opened.Groups[1].Value);
+            }
             if (CaptureRecovery.IsAccessLost(line)) accessLost = true;
             var match = Regex.Match(line, @"filter_raw -> pts:.*?pts_time:([\d.]+)");
             if (match.Success && double.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out var pts))
@@ -249,9 +255,10 @@ public sealed partial class Recorder : IAsyncDisposable
         {
             var segments = await ReadSegmentsWithRetry();
             recordingSession?.Accept(segments);
+            foreach (var request in saveRequests.Where(r => !r.Ready)) RetainSaveSegments(request, ReadSaveSources(request.Sources));
             var bytes = segments.Sum(s => new FileInfo(s.Path).Length);
             foreach (var segment in segments.ToArray())
-                if (!RewindEnabled || segment.End <= Math.Max(rewindSince, rewindRollbackCutoff ?? rewindSaveCutoff) || segment.End < Native.Clock - settings.BufferSeconds - 2 || bytes > (RewindByteLimitForTest ?? settings.MaxBufferMegabytes * 1024L * 1024))
+                if (!RewindEnabled || segment.End <= Math.Max(rewindSince, rewindSaveCutoff) || segment.End < Native.Clock - settings.BufferSeconds - 2 || bytes > (RewindByteLimitForTest ?? settings.MaxBufferMegabytes * 1024L * 1024))
                 { bytes -= new FileInfo(segment.Path).Length; File.Delete(segment.Path); segments.Remove(segment); }
             // Empty completed epochs no longer belong to the ring; keep the active writer's directory.
             foreach (var epoch in epochs.ToArray())
@@ -265,71 +272,45 @@ public sealed partial class Recorder : IAsyncDisposable
         finally { files.Release(); }
         if (lowDisk) { Error = "Мало места на диске буфера. Запись остановлена."; await Stop(); }
     }
-    public async Task<SavedClip> Save()
+    // Compatibility API: callers awaiting Save still await validated publication.
+    public async Task<SavedClip> Save() => await (await AcceptSave()).Completion;
+
+    private async Task<SavedClip> ExportSave(SaveRequest request, double previousCutoff)
     {
-        if (!RewindEnabled) throw new InvalidOperationException("Буфер Rewind выключен.");
-        if (!await exports.WaitAsync(0)) throw new InvalidOperationException("Предыдущий клип ещё сохраняется. Повтори через секунду.");
-        SaveTiming.Current?.Mark("export-guard-acquired");
-        bool locked = false;
-        string? staging = null;
-        bool readyToPublish = false, published = false;
-        bool checkpointAccepted = false;
-        double previousCutoff = double.NegativeInfinity, requested = 0, requestedEpoch = rewindSince;
-        var stage = "read-buffer";
+        using var timingScope = request.Timing?.Enter();
+        using var cancellationScope = MediaTools.EnterCancellation(request.Cancellation);
+        request.Cancellation.ThrowIfCancellationRequested();
+        var requested = request.Accepted;
+        var requestedEpoch = request.Epoch;
+        var lower = Math.Max(request.Lower, previousCutoff);
+        var staging = request.Staging;
+        var selected = request.Segments.Where(s => s.End > lower && s.Start < requested).OrderBy(s => s.Start).ToList();
+        if (selected.Count == 0) throw new InvalidOperationException("Нет доступного видео для клипа.");
+        var end = Math.Min(requested, selected[^1].End);
+        var rawStart = selected[0].Start;
+        var intervals = selected.Select(s => s with { Start = Math.Max(s.Start, lower), End = Math.Min(s.End, end) }).Where(s => s.End > s.Start).ToList();
+        var start = intervals[0].Start;
+        var duration = intervals.Sum(s => s.End - s.Start);
+        SaveTiming.Current?.Mark("segment-selection-completed", new { Count = selected.Count, Duration = duration, Start = start, End = end, RawStart = rawStart, request.Encoder, settings.Height, settings.Fps });
+        var clipWarnings = new List<string>(request.Warnings);
+        if (requested - end > .5) clipWarnings.Add($"Последние {requested - end:F1} с недоступны: нет завершённого видеосегмента");
+        var folder = ClipFiles.OutputFolder(settings.OutputDirectory, settings.GroupByApplication, GameName);
+        Directory.CreateDirectory(folder);
+        var id = request.Id;
+        var concat = Path.Combine(staging, "video.txt");
+        File.WriteAllLines(concat, selected.SelectMany(x => new[] { "file '" + x.Path.Replace('\\', '/').Replace("'", "'\\''") + "'", "duration " + (x.End - x.Start).ToString("F6", CultureInfo.InvariantCulture) }), new UTF8Encoding(false));
+        var jobTracks = request.Audio.Select(a => a.Track).ToArray();
+        SaveTiming.Current?.Mark("audio-join-started");
+        var snapshots = request.Audio.Select(a => (Track: a.Track, Packets: JoinAudio(a.Packets, intervals, end, settings.AudioOffsetMs / 1000.0))).ToList();
+        SaveTiming.Current?.Mark("audio-join-completed");
+        var exportSnapshot = new RewindExportSnapshot(requested, lower, previousCutoff, requestedEpoch, settings.Fps,
+            selected.Select((s, i) => new RewindExportSnapshot.Range(s.Path, s.Start, s.End, intervals[i].Start, intervals[i].End)),
+            jobTracks.Select(t => Path.Combine(staging, t.Name + ".wav")));
+        SaveTiming.Current?.Mark("snapshot-cutoff-established", new { Tracks = snapshots.Count, PcmBytes = snapshots.Sum(s => s.Packets.Sum(p => (long)p.Data.Length)) });
+        bool readyToPublish = false;
+        var stage = "write-audio";
         try
         {
-            if (double.IsNaN(origin) && epochs.Count == 0) throw new InvalidOperationException("Буфер ещё не готов.");
-            requested = Native.Clock;
-            SaveTiming.Current?.Mark("history-boundary-frozen", new { Requested = requested });
-            // The wait never holds the metadata semaphore. Active recording keeps acquiring closed segments.
-            var deadline = Native.Clock + 4;
-            List<Segment> segments;
-            do
-            {
-                await files.WaitAsync(); locked = true;
-                segments = await ReadSegmentsWithRetry();
-                if (segments.Count > 0 && segments[^1].End >= requested || !Running || Native.Clock >= deadline) break;
-                locked = false; files.Release(); await Task.Delay(80);
-            } while (true);
-            SaveTiming.Current?.Mark("closed-segment-ready", new { Count = segments.Count });
-            if (!RewindEnabled || rewindSince != requestedEpoch) throw new InvalidOperationException("Состояние буфера Rewind изменилось. Повтори сохранение.");
-            if (segments.Count == 0) throw new InvalidOperationException("Ещё нет завершённых сегментов. Дай буферу 2–3 секунды.");
-            var end = Math.Min(requested, segments[^1].End);
-            var lower = Math.Max(requested - settings.BufferSeconds, RewindHistoryStart);
-            var selected = segments.Where(x => x.End > lower && x.Start < end).ToList();
-            if (selected.Count == 0) throw new InvalidOperationException("Нет доступного видео для клипа.");
-            var rawStart = selected[0].Start;
-            var intervals = selected.Select(s => s with { Start = Math.Max(s.Start, lower), End = Math.Min(s.End, end) }).ToList();
-            var start = intervals[0].Start;
-            var duration = intervals.Sum(s => s.End - s.Start);
-            SaveTiming.Current?.Mark("segment-selection-completed", new { Count = selected.Count, Duration = duration, Start = start, End = end, RawStart = rawStart, Encoder, settings.Height, settings.Fps });
-            var clipWarnings = new List<string>(warnings);
-            if (requested - end > 0.5) clipWarnings.Add($"Последние {requested - end:F1} с недоступны: нет завершённого видеосегмента");
-            if (Error != null) clipWarnings.Add(Error);
-            var folder = ClipFiles.OutputFolder(settings.OutputDirectory, settings.GroupByApplication, GameName); Directory.CreateDirectory(folder);
-            var id = ClipFiles.NewId();
-            staging = Path.Combine(settings.BufferDirectory, ".saving-" + id); Directory.CreateDirectory(staging);
-            selected = selected.Select((segment, index) =>
-            {
-                var owned = Path.Combine(staging, $"owned-{index:D9}.mkv"); MediaOwnership.Retain(segment.Path, owned);
-                return segment with { Path = owned };
-            }).ToList();
-            SaveTiming.Current?.Mark("video-ownership-secured");
-            var concat = Path.Combine(staging, "video.txt");
-            File.WriteAllLines(concat, selected.SelectMany(x => new[] { "file '" + x.Path.Replace('\\', '/').Replace("'", "'\\''") + "'", "duration " + (x.End - x.Start).ToString("F6", CultureInfo.InvariantCulture) }), new UTF8Encoding(false));
-            var snapshots = tracks.Select(track => (Track: track, Packets: JoinAudio(track.Snapshot(start - 2, end + 2), intervals, end, settings.AudioOffsetMs / 1000.0))).ToList();
-            // Commit only after video ownership and PCM snapshots are secured. Keep rollback
-            // history in the bounded ring until publication; recording owns its own links.
-            previousCutoff = rewindSaveCutoff;
-            rewindRollbackCutoff = previousCutoff;
-            rewindSaveCutoff = requested;
-            checkpointAccepted = true;
-            var exportSnapshot = new RewindExportSnapshot(requested, lower, previousCutoff, requestedEpoch, settings.Fps,
-                selected.Select((s, i) => new RewindExportSnapshot.Range(s.Path, s.Start, s.End, intervals[i].Start, intervals[i].End)),
-                snapshots.Select(s => Path.Combine(staging, s.Track.Name + ".wav")));
-            SaveTiming.Current?.Mark("snapshot-cutoff-established", new { Tracks = snapshots.Count, PcmBytes = snapshots.Sum(s => s.Packets.Sum(p => (long)p.Data.Length)) });
-            AvailableSeconds = 0;
-            locked = false; files.Release(); // Own video directory entries and audio references now; export is independent.
             var reports = new Dictionary<string, SignalReport>();
             stage = "write-audio";
             foreach (var (track, packets) in snapshots)
@@ -338,47 +319,58 @@ public sealed partial class Recorder : IAsyncDisposable
                 var report = await Task.Run(() => AudioTrack.WriteWave(Path.Combine(staging, track.Name + ".wav"), packets, 0, duration, settings.SilenceDb));
                 SaveTiming.Current?.Mark("audio-wav-completed", new { track.Name });
                 reports[track.Name] = report;
-                if (track.Health is { } h) clipWarnings.Add(track.Name + ": " + h);
+                if (request.Audio.First(a => a.Track == track).Health is { } h) clipWarnings.Add(track.Name + ": " + h);
                 if (track.Name == "Microphone" && report.LongestUnintentionalSilenceSeconds >= Math.Min(settings.SilenceWarningSeconds, duration * .95)) clipWarnings.Add($"Микрофон: нет сигнала {report.LongestUnintentionalSilenceSeconds:F0} с");
             }
             SaveTiming.Current?.Mark("audio-pcm-processing-completed");
             var temp = Path.Combine(staging, "clip.mkv");
             List<string> args = ["-hide_banner", "-v", "error", "-f", "concat", "-safe", "0", "-i", concat];
-            foreach (var track in tracks) args.AddRange(["-i", Path.Combine(staging, track.Name + ".wav")]);
-            var mixInputs = tracks.Select((t, i) => (t, i)).Where(x => !(settings.AudioMode == "System" && x.t.Name == "Discord")).Select(x => $"[{x.i + 1}:a]").ToList();
-            var filters = $"[0:v]trim=start={(start - rawStart).ToString("F6", CultureInfo.InvariantCulture)}:duration={duration.ToString("F6", CultureInfo.InvariantCulture)},setpts=PTS-STARTPTS[v]";
+            foreach (var track in jobTracks) args.AddRange(["-i", Path.Combine(staging, track.Name + ".wav")]);
+            var mixInputs = jobTracks.Select((t, i) => (t, i)).Where(x => !(settings.AudioMode == "System" && x.t.Name == "Discord")).Select(x => $"[{x.i + 1}:a]").ToList();
+            // An absolute trim end excludes the next request's first frame.
+            // trim duration starts at the first kept frame, which may follow the lower QPC bound.
+            // Matroska's millisecond time base rounds fractional trim end times down.
+            // Rescale timestamps to microseconds before strict inclusive/exclusive bounds.
+            var firstVideoPts = (long)Math.Ceiling((start - rawStart) * 1_000_000);
+            var endVideoPts = (long)Math.Ceiling((start - rawStart + duration) * 1_000_000);
+            var filters = $"[0:v]settb=AVTB,trim=start_pts={firstVideoPts}:end_pts={endVideoPts},setpts=PTS-STARTPTS[v]";
             if (mixInputs.Count > 0) filters += ";" + string.Join("", mixInputs) + $"amix=inputs={mixInputs.Count}:normalize=0,alimiter=limit=0.95:latency=1[mix]";
             args.AddRange(["-filter_complex", filters, "-map", "[v]"]);
             if (mixInputs.Count > 0) args.AddRange(["-map", "[mix]"]);
-            for (var i = 0; i < tracks.Count; i++) args.AddRange(["-map", $"{i + 1}:a:0"]);
-            // The unchanged decoded-trim arguments remain the fallback reference.
-            args.AddRange(["-c:v", Encoder, "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", settings.Quality.ToString(), "-b:v", "0", "-maxrate", $"{settings.MaxBitrateMbps}M", "-bufsize", $"{settings.MaxBitrateMbps * 2}M", "-bf", "0", "-r", settings.Fps.ToString(), "-c:a", "aac", "-b:a", "160k", "-t", duration.ToString("F6", CultureInfo.InvariantCulture)]);
+            for (var i = 0; i < jobTracks.Length; i++) args.AddRange(["-map", $"{i + 1}:a:0"]);
+            // Preserve the selected source timestamp grid. A global output -t can
+            // truncate its last frame after encoder time-base rounding. The trim
+            // bounds and already bounded WAV inputs define each stream's end.
+            args.AddRange(["-c:v", request.Encoder, "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", settings.Quality.ToString(), "-b:v", "0", "-maxrate", $"{settings.MaxBitrateMbps}M", "-bufsize", $"{settings.MaxBitrateMbps * 2}M", "-bf", "0", "-fps_mode:v", "passthrough", "-enc_time_base:v", "filter", "-c:a", "aac", "-b:a", "160k"]);
             if (mixInputs.Count > 0) args.AddRange(["-metadata:s:a:0", "title=Mix", "-disposition:a:0", "default"]);
-            for (var i = 0; i < tracks.Count; i++) args.AddRange([$"-metadata:s:a:{i + 1}", $"title={tracks[i].Name}", $"-disposition:a:{i + 1}", "0"]);
+            for (var i = 0; i < jobTracks.Length; i++) args.AddRange([$"-metadata:s:a:{i + 1}", $"title={jobTracks[i].Name}", $"-disposition:a:{i + 1}", "0"]);
             args.AddRange(["-y", temp]);
             stage = "export";
             SaveTiming.Current?.Mark("video-processing-started");
-            var strategy = await HybridExport.Run(exportSnapshot, PacketCopy, VideoExport, Encoder, args, temp, async () =>
+            var strategy = await HybridExport.Run(exportSnapshot, PacketCopy, VideoExport, request.Encoder, args, temp, async () =>
             {
                 var probe = await MediaTools.Run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", temp]);
                 if (probe.Code != 0 || !string.IsNullOrWhiteSpace(probe.Error)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
                 using var document = JsonDocument.Parse(probe.Output);
                 var streams = document.RootElement.GetProperty("streams");
-                if (!streams.EnumerateArray().Any(s => s.GetProperty("codec_type").GetString() == "video") || streams.GetArrayLength() != 1 + tracks.Count + (mixInputs.Count > 0 ? 1 : 0)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
+                if (!streams.EnumerateArray().Any(s => s.GetProperty("codec_type").GetString() == "video") || streams.GetArrayLength() != 1 + jobTracks.Length + (mixInputs.Count > 0 ? 1 : 0)) throw new IOException("Проверка дорожек готового клипа не пройдена.");
             });
             var exported = strategy.Export;
             var final = Path.Combine(folder, id + ".mkv");
             SaveTiming.Current?.Mark("media-validation-completed");
             SaveTiming.Current?.Associate(final);
-            var metadata = new { GameName, Encoder, CaptureBackend, HideDisplayBorder = settings.HideDisplayBorder, Duration = duration, CaptureMode = settings.CaptureMode, AudioMode = settings.AudioMode, AudioOffsetMs = settings.AudioOffsetMs, Sync = "WASAPI frame position anchored to QPC; video epoch estimated from pre-encode frame arrival", Warnings = clipWarnings, RemovedCaptureGapSeconds = Math.Max(0, end - start - duration), Tracks = reports,
+            var metadata = new { GameName, request.Encoder, CaptureBackend = request.Backend, HideDisplayBorder = settings.HideDisplayBorder, Duration = duration, CaptureMode = settings.CaptureMode, AudioMode = settings.AudioMode, AudioOffsetMs = settings.AudioOffsetMs, Sync = "WASAPI frame position anchored to QPC; video epoch estimated from pre-encode frame arrival", Warnings = clipWarnings, RemovedCaptureGapSeconds = Math.Max(0, end - start - duration), Tracks = reports,
                 ActualStart = start, ActualEnd = end, AcceptedSaveBoundary = requested, PreviousSaveCutoff = double.IsFinite(previousCutoff) ? (double?)previousCutoff : null,
                 ExportDecoder = exported.Video.Decoder, HardwareDecodeFallback = exported.Video.SoftwareFallback,
                 PacketCopyEligible = exported.Eligible, PacketCopyFallback = exported.CopyFallback, ExportPlanReason = exported.Reason,
                 strategy.HybridEligible, strategy.HybridFallback, strategy.HybridReason, strategy.EncodedFrames, strategy.CopiedFrames,
-                CaptureDiagnostics = tracks.ToDictionary(t => t.Name, t => new { t.DeviceName, t.CaptureFormat, t.MissingFrames, t.Discontinuities }) };
+                CaptureDiagnostics = request.Audio.ToDictionary(a => a.Track.Name, a => a.Diagnostics) };
+            request.Cancellation.ThrowIfCancellationRequested();
             readyToPublish = true; stage = "publish";
+            SaveTiming.Current?.Mark("output-publication-started");
             var metadataWarning = await ClipFiles.Publish(temp, final, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
-            published = true;
+            request.Published = true;
+            SaveTiming.Current?.Mark("output-publication-completed");
             SaveTiming.Current?.Mark("final-media-published", new { Path = final, Duration = duration });
             if (metadataWarning != null) clipWarnings.Add(metadataWarning);
             return new(final, duration, clipWarnings);
@@ -386,22 +378,12 @@ public sealed partial class Recorder : IAsyncDisposable
         catch (Exception ex)
         {
             ClipFiles.Log(stage, ex, staging);
-            if (readyToPublish && !published) throw new IOException($"Не удалось перенести готовый клип. Он оставлен для восстановления: {Path.Combine(staging!, "clip.mkv")}", ex);
-            throw;
-        }
-        finally
-        {
-            if (checkpointAccepted)
+            if (readyToPublish && !request.Published)
             {
-                if (!locked) { await files.WaitAsync(); locked = true; }
-                // OFF/ON owns a new history epoch; a late failed export cannot revive it.
-                if (!published && rewindSince == requestedEpoch && rewindSaveCutoff == requested) rewindSaveCutoff = previousCutoff;
-                rewindRollbackCutoff = null;
+                request.Recoverable = true;
+                throw new IOException($"Не удалось перенести готовый клип. Он оставлен для восстановления: {Path.Combine(staging, "clip.mkv")}", ex);
             }
-            if (staging != null && (published || !readyToPublish)) try { Directory.Delete(staging, true); } catch { }
-            if (locked) files.Release();
-            exports.Release();
-            SaveTiming.Current?.Mark("export-cleanup-completed");
+            throw;
         }
     }
     internal static List<AudioPacket> JoinAudio(List<AudioPacket> packets, List<Segment> segments, double end, double offset)
@@ -450,12 +432,13 @@ public sealed partial class Recorder : IAsyncDisposable
     }
     private async Task DisposeCore()
     {
+        await CloseSaveAcceptance();
         await Stop();
         recordingPulseCancellation.Cancel();
         if (recordingPulse != null) await recordingPulse;
-        await exports.WaitAsync(); exports.Release();
+        await DrainSaves();
         lifetime?.Dispose(); video?.Dispose(); files.Dispose();
-        recordingPulseCancellation.Dispose(); recordingCommands.Dispose(); exports.Dispose();
+        recordingPulseCancellation.Dispose(); recordingCommands.Dispose();
         // Only this session's generated directory; unfinished crash sessions remain recoverable.
         if (!PreserveBuffer) try { Directory.Delete(SessionDirectory, true); } catch { }
     }

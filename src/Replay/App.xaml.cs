@@ -8,6 +8,11 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Contains("--manual-build-check"))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Shutdown(await SelfTest.CheckManualBuild(e.Args.Last())); return;
+        }
         if (e.Args.Contains("--microphone-monitor-test"))
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

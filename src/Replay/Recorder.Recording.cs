@@ -3,7 +3,6 @@ namespace Replay;
 public sealed partial class Recorder
 {
     private readonly SemaphoreSlim recordingCommands = new(1, 1);
-    private readonly SemaphoreSlim exports = new(1, 1);
     private readonly CancellationTokenSource recordingPulseCancellation = new();
     private Task? recordingPulse;
     private RecordingSession? recordingSession;
@@ -33,6 +32,8 @@ public sealed partial class Recorder
             if (RewindEnabled == enabled) return;
             recordingSession?.Accept(await ReadSegmentsWithRetry());
             RewindEnabled = enabled; rewindSince = Native.Clock; AvailableSeconds = 0;
+            rewindSaveCutoff = rewindAcceptedCutoff = double.NegativeInfinity;
+            Volatile.Write(ref currentEpochSaves, 0); lastSaveAvailability = false;
             foreach (var track in tracks) track.SetRetention(enabled ? settings.BufferSeconds + 20 : 2);
         }
         finally { files.Release(); }

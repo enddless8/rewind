@@ -48,10 +48,22 @@ internal sealed class OverlayNotificationService : IAsyncDisposable
     public void ShowRecordingStarted() => Enqueue(new(OverlayNotificationKind.RecordingStarted, "Rewind", "Запись началась"));
     public void ShowMicrophoneEnabled() => Enqueue(new(OverlayNotificationKind.MicrophoneEnabled, "Rewind", "Микрофон включён"));
     public void ShowMicrophoneMuted() => Enqueue(new(OverlayNotificationKind.MicrophoneMuted, "Rewind", "Микрофон отключён"));
-    public void BeginRewindSave(Guid operation, OverlayMonitor? target = null) => OnDispatcher(() =>
+    public void BeginRewindSave(Guid operation, OverlayMonitor? target = null, bool queued = false, SaveClipStage? stage = null) => OnDispatcher(() =>
     {
         if (entries.Any(e => e.Notification.SaveOperationId == operation)) return;
-        Enqueue(new(OverlayNotificationKind.RewindSaving, "Rewind", "Идёт сохранение...", SaveOperationId: operation), target);
+        var state = stage ?? (queued ? SaveClipStage.Queued : SaveClipStage.Exporting);
+        var body = state == SaveClipStage.Queued ? "Клип в очереди" : state == SaveClipStage.Preparing ? "Подготовка клипа" : "Сохранение клипа";
+        Enqueue(new(OverlayNotificationKind.RewindSaving, "Rewind", body, SaveOperationId: operation), target);
+    });
+    public void PrepareRewindSave(Guid operation) => OnDispatcher(() =>
+    {
+        var entry = entries.FirstOrDefault(e => e.Notification.SaveOperationId == operation && e.Notification.Kind == OverlayNotificationKind.RewindSaving);
+        if (entry?.Notification.Body == "Клип в очереди") Update(entry, entry.Notification with { Body = "Подготовка клипа" });
+    });
+    public void ExportRewindSave(Guid operation) => OnDispatcher(() =>
+    {
+        var entry = entries.FirstOrDefault(e => e.Notification.SaveOperationId == operation && e.Notification.Kind == OverlayNotificationKind.RewindSaving);
+        if (entry != null && entry.Notification.Body != "Сохранение клипа") Update(entry, entry.Notification with { Body = "Сохранение клипа" });
     });
     public void CompleteRewindSave(Guid operation, SavedClip clip) => OnDispatcher(() =>
     {
@@ -112,16 +124,19 @@ internal sealed class OverlayNotificationService : IAsyncDisposable
     }
     private void Enqueue(OverlayNotification notification, OverlayMonitor? target = null) => OnDispatcher(() =>
     {
+        SaveTiming.ForOperation(notification.SaveOperationId)?.Mark("save-notification-emitted", new { notification.Kind, notification.Body });
         var entry = new Pending(notification, target ?? monitor());
         entries.Add(entry); pending.Add(entry); RequestDrain();
     });
     private void Update(Pending entry, OverlayNotification notification)
     {
+        SaveTiming.ForOperation(notification.SaveOperationId)?.Mark("save-notification-emitted", new { notification.Kind, notification.Body });
         entry.Notification = notification;
         var item = visible.FirstOrDefault(v => v.Entry == entry);
         if (item == null) return; // Queued operations retain the latest state until their FIFO turn.
         item.Revision++; item.Timer.Stop();
         item.Window.Revive(); item.Window.ApplyNotification(notification);
+        SaveTiming.ForOperation(notification.SaveOperationId)?.NotificationDisplayed(dispatcher, item.Window, notification);
         StartLifetime(item); Shown?.Invoke(notification);
         if (notification.Kind == OverlayNotificationKind.RewindSaved) SaveTiming.ForOperation(notification.SaveOperationId)?.OverlayDisplayed(dispatcher);
         if (notification.Kind == OverlayNotificationKind.RecordingSaved && notification.MediaPath is { } recorded)
@@ -170,6 +185,7 @@ internal sealed class OverlayNotificationService : IAsyncDisposable
                     window.ShowAt(bounds);
                     if (next.Removed || stopped) { Remove(item); continue; }
                     window.ApplyNotification(next.Notification);
+                    SaveTiming.ForOperation(next.Notification.SaveOperationId)?.NotificationDisplayed(dispatcher, window, next.Notification);
                     timer.Tick += (_, _) =>
                     {
                         timer.Stop(); var revision = item.Revision;

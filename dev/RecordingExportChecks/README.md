@@ -127,3 +127,55 @@ An optional third argument selects a separate FFmpeg binary for full decoding.
 .tools/dotnet/dotnet.exe build dev/RecordingExportChecks/RecordingExportChecks.csproj -c Release --nologo
 .tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll compression-queue artifacts/compression-queue-new
 ```
+
+## Non-blocking SaveClip queue
+
+`save-queue` uses generated, isolated segmented AV1/PCM fixtures. It covers bounded
+FIFO admission, exact source-frame selection/PTS, failed and cancelled predecessors,
+active-process cancellation, cancelled NVDEC probe recovery, overload, video/PCM/disk
+budgets, eight simultaneous admissions, rollover, gaps, epochs and shutdown. Sources
+and queue state are exclusively under the supplied new `artifacts` directory. It
+reads hashes of all private runtime files, never writes them. Independent
+libdav1d decoding uses `REWIND_TEST_DECODER` if set, otherwise the existing full
+FFmpeg decoder lab under
+`artifacts/save-profile/decoder-lab/ffmpeg-9.0.2-full_build/bin/ffmpeg.exe`.
+The fixture directory must be new and empty. Admission-backlog limits, pending
+cancellation, output-volume free space, Stop and eight concurrent disposals are
+also covered without starting desktop capture.
+
+`save-queue-live` captures the actual desktop at 1080p60 with isolated output/buffer,
+accepts four saves at +0/+1/+2/+3 seconds, preserves owned sources for paired checks,
+and exercises conventional recording and screenshots. Run capture/latency suites
+sequentially with desktop access. The live test reports diagnostics without claiming
+that queueing speeds up FFmpeg or guarantees sub-100ms on other machines. An optional
+third argument to `save-queue` selects one fixture mode for defect reproduction.
+
+```powershell
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Debug/net10.0-windows/FidelityChecks.dll save-queue artifacts/save-queue-new
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Debug/net10.0-windows/FidelityChecks.dll save-queue-live artifacts/save-queue-live-new
+```
+
+`save-latency-live` measures the first save with an idle worker and two more saves
+during its real export, using isolated 1080p60 desktop capture and production WPF
+overlays. It issues the first request near the middle of a two-second capture
+segment after warming a 30-second buffer. Monotonic stage/notification traces and
+status assertions are written to the new test directory. This is a programmatic
+SaveClip command, not a physical hotkey press or a constructed MainWindow. Stop
+other capture/encode workloads for clean performance measurements. Persisted user
+settings and compression queue are hashed; a separate active user's rolling buffer
+is mutable and is not compared by this live harness. The ordinary `save-queue`
+regression retains its full recursive private-file preservation check and also
+tests delayed preparation, cancellation and state transitions.
+
+```powershell
+.tools/dotnet/dotnet.exe dev/RecordingExportChecks/bin/Release/net10.0-windows/FidelityChecks.dll save-latency-live artifacts/save-latency-new
+```
+
+`save-export-live` runs only the first request with the same capture settings and
+real notifications. It retains the already owned snapshot and exact FFmpeg arguments
+for offline comparisons; its test-only retention time has separate trace marks.
+Run fresh processes sequentially to include the session's first capability probe.
+`profile_save_export.py <retained-run> <new-artifacts-dir> filters` alternates three
+baseline/filter-thread measurements on those identical sources, then independently
+compares packet payloads, PTS/DTS, decoded video and AAC. It does not alter production
+options. The default experimental buffer variants can fail and are not shipping settings.

@@ -9,6 +9,48 @@ using System.Windows.Threading;
 namespace Replay;
 internal static class SelfTest
 {
+    internal static async Task<int> CheckManualBuild(string resultPath)
+    {
+        // Packaging smoke only: no MainWindow, private settings, recorder or queue.
+        try
+        {
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var core = System.Diagnostics.Process.GetCurrentProcess().Modules.Cast<System.Diagnostics.ProcessModule>()
+                .Single(m => m.ModuleName.Equals("coreclr.dll", StringComparison.OrdinalIgnoreCase)).FileName;
+            if (!Environment.Is64BitProcess || !Path.GetFullPath(core).StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("The app is not using its bundled x64 runtime.");
+            var faces = new List<object>();
+            var family = (System.Windows.Media.FontFamily)Application.Current.Resources["RewindticaFont"];
+            foreach (var weight in new[] { FontWeights.Light, FontWeights.Medium, FontWeights.Bold })
+            {
+                var typeface = new Typeface(family, FontStyles.Normal, weight, FontStretches.Normal);
+                if (!typeface.TryGetGlyphTypeface(out var glyph) || glyph.Weight != weight || glyph.StyleSimulations != StyleSimulations.None ||
+                    "Подготовка клипа Клип в очереди Сохранение клипа".Any(c => !glyph.CharacterToGlyphMap.ContainsKey(c)))
+                    throw new IOException("Embedded Rewindtica face/glyph check failed.");
+                faces.Add(new { Weight = weight.ToOpenTypeWeight(), Uri = glyph.FontUri.ToString() });
+            }
+            var tools = new List<object>();
+            foreach (var name in new[] { "ffmpeg", "ffprobe" })
+            {
+                var binary = MediaTools.Find(name);
+                if (!Path.GetFullPath(binary).StartsWith(Path.Combine(root, "tools") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("Media tool was resolved outside the manual build.");
+                var version = await MediaTools.Run(name, ["-version"]);
+                if (version.Code != 0) throw new IOException("Bundled tool cannot run: " + name);
+                tools.Add(new { Name = name, Path = binary, Version = version.Output.Split('\n')[0] });
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
+            File.WriteAllText(resultPath, JsonSerializer.Serialize(new { passed = true, X64 = Environment.Is64BitProcess, CoreClr = core,
+                Framework = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, Faces = faces, Tools = tools }, new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
+            File.WriteAllText(resultPath, JsonSerializer.Serialize(new { passed = false, error = ex.ToString() }));
+            return 1;
+        }
+    }
     public static async Task RenderUi(string path)
     {
         var window = new MainWindow(); window.Show(); await Task.Delay(300); window.UpdateLayout();

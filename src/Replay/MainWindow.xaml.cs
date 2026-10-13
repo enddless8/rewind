@@ -24,6 +24,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private HwndSource? source;
     private bool exiting, busy, saving, ticking;
+    private readonly HashSet<Task> saveCommands = new();
+    private Guid? latestSaveOperation;
     private GameWindow? foregroundGame;
     private string? lastWarning;
     private string? hotkeyWarning;
@@ -148,7 +150,7 @@ public partial class MainWindow : Window
         var running = recordingWanted && recorder?.Running == true;
         rewindPresentation = RewindPresentation.FromCapture(recordingWanted, running, rewindTransition,
             recovering, recorder?.RecoverableCaptureLoss == true, recovery.Exhausted,
-            rewindCommandError != null, !busy && !saving && recorder?.HasReadableBufferData == true, saving, busy);
+            rewindCommandError != null, !busy && !saving && recorder?.CanAcceptSave == true, saving, busy);
         SaveButton.IsEnabled = rewindPresentation.SaveState == RewindSaveState.Available;
         RewindOnButton.IsEnabled = RewindOffButton.IsEnabled = !busy && !saving && !micTestStarting && !conventionalStarting;
         UpdateScreenshotPresentation();
@@ -177,8 +179,8 @@ public partial class MainWindow : Window
         RewindOnButton.Opacity = active ? .56 : 1;
         RewindOffButton.Opacity = rewindPresentation.State == RewindState.Off ? .56 : 1;
         MainStateText.Text = rewindPresentation.State is RewindState.Starting or RewindState.Stopping or RewindState.Recovering or RewindState.Error
-            ? state : saving ? "Сохраняю Rewind…" : running && !SaveButton.IsEnabled ? "Набираю буфер Rewind…" : "";
-        SaveButton.ToolTip = saving ? "Сохраняю Rewind…" : SaveButton.IsEnabled
+            ? state : saving ? "Принимаю клип…" : recorder?.OutstandingSaves > 0 ? $"{(recorder.ProcessingSaves > 0 ? "Сохранение клипа" : "Подготовка клипа")} · в очереди {Math.Max(0, recorder.OutstandingSaves - recorder.ProcessingSaves - recorder.PreparingSaves)}" : running && !SaveButton.IsEnabled ? "Набираю буфер Rewind…" : "";
+        SaveButton.ToolTip = saving ? "Принимаю клип…" : recorder?.SaveQueueFull == true ? "Очередь Rewind заполнена; дождись завершения экспорта" : SaveButton.IsEnabled
             ? "Сохранить последние секунды Rewind" : "Сохранение доступно после появления завершённых фрагментов буфера";
         UpdateRecordingPresentation();
         ObserveRewindOverlay();
@@ -318,21 +320,35 @@ public partial class MainWindow : Window
         catch (Exception ex) { rewindCommandError = ex.Message; StatusText.Text = "●  Ошибка Rewind"; WarningText.Text = ex.Message; Notify("Ошибка Rewind", ex.Message, true); }
         finally { busy = false; rewindTransition = null; UpdateMainPresentation(); }
     }
-    private async Task SaveClip()
+    private async Task SaveClip(long? receivedTick = null, string commandSource = "button")
     {
+        receivedTick ??= Stopwatch.GetTimestamp();
         if (recovering) { saveAfterRecovery = true; return; }
-        if (recorder == null || saving || busy || !recorder.HasReadableBufferData) return;
+        if (exiting || recorder == null || saving || busy) return;
+        var saveRecorder = recorder;
+        var commandDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        saveCommands.Add(commandDone.Task);
         var saveOperation = Guid.NewGuid();
-        using var timing = SaveTiming.Begin(saveOperation);
+        using var timing = SaveTiming.Begin(saveOperation, receivedTick);
+        timing?.MarkAt("save-command-received", receivedTick ?? Stopwatch.GetTimestamp(), new { Source = commandSource });
         timing?.Mark("command-accepted");
         saving = true;
-        UpdateMainPresentation();
-        var saveMonitor = OverlayTarget();
+        bool acceptedRequest = false;
+        Task started = Task.CompletedTask;
         try
         {
-            LastClipText.Text = "Сохраняю клип…";
-            overlays?.BeginRewindSave(saveOperation, saveMonitor);
-            var clip = await recorder.Save();
+            var acceptance = saveRecorder.AcceptSave(); // Freeze command QPC before presentation work.
+            UpdateMainPresentation();
+            var saveMonitor = OverlayTarget();
+            var accepted = await acceptance;
+            latestSaveOperation = saveOperation;
+            LastClipText.Text = accepted.Stage == SaveClipStage.Queued ? "Клип в очереди" : accepted.Stage == SaveClipStage.Exporting ? "Сохранение клипа" : "Подготовка клипа";
+            overlays?.BeginRewindSave(saveOperation, saveMonitor, stage: accepted.Stage);
+            acceptedRequest = true;
+            saving = false;
+            UpdateMainPresentation();
+            started = ObserveQueuedSave(accepted, saveOperation);
+            var clip = await accepted.Completion;
             timing?.Mark("save-returned", new { clip.Path, clip.Duration });
             LastClipText.Text = $"Сохранено {clip.Duration:F0} с · {Path.GetFileName(clip.Path)}";
             overlays?.CompleteRewindSave(saveOperation, clip);
@@ -349,7 +365,22 @@ public partial class MainWindow : Window
             if (settings.Sounds) { if (clip.Warnings.Count > 0) SystemSounds.Exclamation.Play(); else SystemSounds.Asterisk.Play(); }
         }
         catch (Exception ex) { timing?.Mark("save-failed", new { ex.Message }); overlays?.FailRewindSave(saveOperation); LastClipText.Text = "Клип не сохранён: " + ex.Message; Notify("Ошибка сохранения", ex.Message, true); if (settings.Sounds) SystemSounds.Hand.Play(); }
-        finally { saving = false; UpdateMainPresentation(); }
+        finally { await started; if (!acceptedRequest) saving = false; saveCommands.Remove(commandDone.Task); commandDone.TrySetResult(); UpdateMainPresentation(); }
+    }
+    private async Task ObserveQueuedSave(AcceptedSave accepted, Guid operation)
+    {
+        if (await accepted.PreparationStarted && accepted.Stage == SaveClipStage.Preparing && !exiting)
+        {
+            overlays?.PrepareRewindSave(operation);
+            if (latestSaveOperation == operation) LastClipText.Text = "Подготовка клипа";
+            UpdateMainPresentation();
+        }
+        if (await accepted.ExportStarted && !exiting)
+        {
+            overlays?.ExportRewindSave(operation);
+            if (latestSaveOperation == operation) LastClipText.Text = "Сохранение клипа";
+            UpdateMainPresentation();
+        }
     }
     private async Task Tick()
     {
@@ -447,6 +478,7 @@ public partial class MainWindow : Window
         meterTimer.Stop(); audioSaveTimer.Stop(); SaveAudioControls(); await StopMicrophoneTest();
         await StopRecording();
         if (recorder != null) await recorder.DisposeAsync();
+        await Task.WhenAll(saveCommands.ToArray());
         await compression.DisposeAsync();
         overlayCompressionJobs.Clear();
         ReleaseHotkey(saveRegistration); ReleaseHotkey(toggleRegistration);
@@ -465,6 +497,7 @@ public partial class MainWindow : Window
     }
     private nint WindowProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
+        var messageReceived = msg == 0x0312 ? Stopwatch.GetTimestamp() : 0;
         // Caption clicks are outside the selector too; leave native window handling intact.
         if (msg == 0x00A1 /* WM_NCLBUTTONDOWN */) CloseRewindSelector();
         if (msg == 0x0312)
@@ -480,7 +513,7 @@ public partial class MainWindow : Window
             {
                 switch (action.Value)
                 {
-                    case HotkeyAction.Save: _ = SaveClip(); break;
+                    case HotkeyAction.Save: _ = SaveClip(messageReceived, "hotkey"); break;
                     case HotkeyAction.Toggle: if (!recovering) _ = Toggle(); break;
                     case HotkeyAction.Recording: _ = ToggleRecording(); break;
                     case HotkeyAction.Screenshot: _ = TakeScreenshot(); break;

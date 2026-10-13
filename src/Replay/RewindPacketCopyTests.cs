@@ -278,7 +278,7 @@ internal static class RewindPacketCopyTests
                     var filterAt = reference.IndexOf("-filter_complex");
                     reference[filterAt + 1] = "[0:v]trim=start=0:duration=" + duration + ",setpts=PTS-STARTPTS[v];" + reference[filterAt + 1];
                     reference[reference.IndexOf("0:v:0")] = "[v]"; reference[reference.LastIndexOf("-c:v") + 1] = "av1_nvenc";
-                    reference.InsertRange(reference.IndexOf("-c:a"), ["-r", "30", "-bf", "0"]);
+                    reference.InsertRange(reference.IndexOf("-c:a"), reference.Contains("-fps_mode:v") ? ["-bf", "0"] : ["-r", "30", "-bf", "0"]);
                     references.Add((args[^1], reference, root));
                 }
                 return await MediaTools.Run(tool, args, timeout, bindLifetime: true);

@@ -16,6 +16,7 @@ internal sealed class RewindVideoExport
     private readonly Func<string, Task<bool>>? supportOverride;
     private readonly Command run;
     private Task<bool>? support;
+    private readonly object supportGate = new();
     private bool hardwareFailed;
 
     // Overrides are instance-scoped test seams, never persisted settings/global flags.
@@ -29,8 +30,18 @@ internal sealed class RewindVideoExport
     internal async Task<Result> Run(string encoder, string closedSample, IReadOnlyList<string> softwareArgs,
         string temporaryOutput, Func<Task> verify)
     {
-        var hardware = encoder == "av1_nvenc" && hardwareEnabled && !hardwareFailed &&
-            await (support ??= CheckSupport(closedSample));
+        bool hardware;
+        try
+        {
+            hardware = encoder == "av1_nvenc" && hardwareEnabled && !hardwareFailed &&
+                await Support(closedSample);
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled request must not poison the next FIFO request's capability check.
+            // Support clears the specific cancelled task under its gate.
+            throw;
+        }
         if (hardware)
         {
             try
@@ -50,6 +61,25 @@ internal sealed class RewindVideoExport
         }
         await Attempt(Arguments(softwareArgs, false), "software-default", verify);
         return new("software-default", hardware);
+    }
+
+    // The exact same guarded capability check may overlap an idle job's tail
+    // closure. It never starts an encoder or takes a new media snapshot.
+    internal async Task Preflight(string encoder, string closedSample)
+    {
+        if (encoder == "av1_nvenc" && hardwareEnabled && !hardwareFailed)
+            await Support(closedSample);
+    }
+    private async Task<bool> Support(string sample)
+    {
+        Task<bool> attempt;
+        lock (supportGate) attempt = support ??= CheckSupport(sample);
+        try { return await attempt; }
+        catch (OperationCanceledException)
+        {
+            lock (supportGate) if (support == attempt) support = null;
+            throw;
+        }
     }
 
     private async Task Attempt(IReadOnlyList<string> args, string decoder, Func<Task> verify)
@@ -118,7 +148,14 @@ internal sealed class RewindVideoExport
                 capabilities.Add(key, capability);
             }
         }
-        var supported = await capability.Value;
+        bool supported;
+        try { supported = await capability.Value; }
+        catch (OperationCanceledException)
+        {
+            lock (cacheGate)
+                if (capabilities.GetValueOrDefault(key) == capability) capabilities.Remove(key);
+            throw;
+        }
         if (!supported)
         {
             // A busy/resetting GPU is not a permanent lack of codec support.

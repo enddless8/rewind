@@ -3,6 +3,14 @@ using System.Diagnostics;
 namespace Replay;
 internal static class MediaTools
 {
+    private static readonly AsyncLocal<CancellationToken> operationCancellation = new();
+    internal static IDisposable EnterCancellation(CancellationToken token)
+    {
+        var old = operationCancellation.Value; operationCancellation.Value = token;
+        return new CancellationScope(old);
+    }
+    private sealed class CancellationScope(CancellationToken old) : IDisposable
+    { public void Dispose() => operationCancellation.Value = old; }
     public static string Find(string name)
     {
         var bundled = Path.Combine(AppContext.BaseDirectory, "tools", name + ".exe");
@@ -23,6 +31,8 @@ internal static class MediaTools
     public static async Task<(int Code, string Output, string Error)> Run(string tool, IEnumerable<string> args, int timeout = 30,
         CancellationToken cancellationToken = default, bool bindLifetime = false)
     {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, operationCancellation.Value);
+        cancellationToken = linked.Token;
         cancellationToken.ThrowIfCancellationRequested();
         var timing = SaveTiming.Current;
         var arguments = args.ToList();
@@ -32,6 +42,8 @@ internal static class MediaTools
         timing?.Mark("process-start-requested", new { Tool = tool, Arguments = arguments });
         process.Start();
         timing?.Mark("process-started", new { Tool = tool, Pid = process.Id });
+        if (tool == "ffmpeg" && arguments.Contains("-c:a") && arguments.Any(a => a.EndsWith("clip.mkv", StringComparison.OrdinalIgnoreCase)))
+            timing?.Mark("ffmpeg-clip-export-started", new { Pid = process.Id });
         ProcessLifetime? lifetime = null;
         var output = progress ? ReadProgress(process, timing!) : process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
         try

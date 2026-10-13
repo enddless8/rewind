@@ -15,7 +15,7 @@ internal static class Program
                 throw new ArgumentException("Проверки разрешены только в artifacts.");
             Directory.CreateDirectory(root);
             ClipFiles.DiagnosticDirectoryForTests = Path.Combine(root, "diagnostics");
-            if (args[0] is "recording" or "edges" or "recovery" or "live" or "live-long" or "live-long-candidate" or "phase1-media" or "concurrency")
+            if (args[0] is "recording" or "edges" or "recovery" or "live" or "live-long" or "live-long-candidate" or "phase1-media" or "phase2-production" or "concurrency" or "save-queue-live" or "save-latency-live" or "save-export-live")
             {
                 var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
                 // The standalone harness has no App.xaml startup (and must not
@@ -29,12 +29,16 @@ internal static class Program
                         "edges" => await RecordingTest.RunEdges(root), "live" => await LiveRecording.Run(root), "live-long" => await LiveRecording.Run(root, 60),
                         "live-long-candidate" => await LiveRecording.Run(root, 60, parallelAudio: true),
                         "concurrency" => await ConcurrencyChecks.Run(root),
-                        "phase1-media" => await Phase1Media(root), _ => await RecoveryTest.Run(root) }; }
+                        "save-queue-live" => await SaveQueueChecks.Run(root, true),
+                        "save-latency-live" => await SaveLatencyChecks.Run(root),
+                        "save-export-live" => await SaveLatencyChecks.Run(root, single: true),
+                        "phase1-media" => await Phase1Media(root), "phase2-production" => await Phase2Production(root), _ => await RecoveryTest.Run(root) }; }
                     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
                     finally { app.Shutdown(); }
                 });
                 app.Run(); return Environment.ExitCode;
             }
+            if (args[0] == "save-queue") return SaveQueueChecks.Run(root, false, args.Length > 2 ? args[2] : null).GetAwaiter().GetResult();
             if (args[0] == "compression-queue") return CompressionQueueChecks.Run(root, args.Length > 2 ? Path.GetFullPath(args[2]) : null).GetAwaiter().GetResult();
             if (args[0] == "process-profile") ProcessProfile.Run(root, args.Length > 2).GetAwaiter().GetResult();
             else if (args[0] == "process") MediaFailureChecks.Run(root).GetAwaiter().GetResult();
@@ -142,6 +146,13 @@ internal static class Program
     {
         List<object> checks = [];
         await RewindVideoExportMediaTests.Run(root, (ok, name) => { checks.Add(new { ok, name }); if (!ok) throw new Exception(name); });
+        File.WriteAllText(Path.Combine(root, "results.json"), JsonSerializer.Serialize(new { passed = true, count = checks.Count, checks }));
+        return 0;
+    }
+    private static async Task<int> Phase2Production(string root)
+    {
+        List<object> checks = [];
+        await RewindPacketCopyTests.RunProduction(root, (ok, name) => { checks.Add(new { ok, name }); if (!ok) throw new Exception(name); });
         File.WriteAllText(Path.Combine(root, "results.json"), JsonSerializer.Serialize(new { passed = true, count = checks.Count, checks }));
         return 0;
     }

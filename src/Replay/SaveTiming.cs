@@ -17,17 +17,18 @@ internal sealed class SaveTiming : IDisposable
     internal static event Action<Guid, string, double, object?>? Observed;
     internal static SaveTiming? Current => ambient.Value;
     private readonly SaveTiming? previous;
-    private readonly long origin = Stopwatch.GetTimestamp();
+    private readonly long origin;
+    private string[] captureDirectories = [];
     private readonly string log;
     private readonly Guid operation;
 
-    private SaveTiming(Guid operation, string log)
-    { this.operation = operation; this.log = log; previous = ambient.Value; ambient.Value = this; }
-    internal static SaveTiming? Begin(Guid operation)
+    private SaveTiming(Guid operation, string log, long receivedTick)
+    { this.operation = operation; this.log = log; origin = receivedTick; previous = ambient.Value; ambient.Value = this; }
+    internal static SaveTiming? Begin(Guid operation, long? receivedTick = null)
     {
         var path = Environment.GetEnvironmentVariable("REWIND_SAVE_TIMINGS_FILE");
         if (string.IsNullOrWhiteSpace(path)) return null;
-        var result = new SaveTiming(operation, path);
+        var result = new SaveTiming(operation, path, receivedTick ?? Stopwatch.GetTimestamp());
         operations[operation] = result;
         if (operations.Count > 64)
             foreach (var old in operations.Values.OrderBy(t => t.origin).Take(operations.Count - 64))
@@ -40,11 +41,11 @@ internal sealed class SaveTiming : IDisposable
     internal static SaveTiming? ForOperation(Guid? id) => id is { } key && operations.TryGetValue(key, out var value) ? value : null;
     internal static SaveTiming? ForMedia(string path) => media.GetValueOrDefault(path);
     internal void Associate(string path) => media[path] = this;
-    internal void Mark(string stage, object? details = null)
+    internal void Mark(string stage, object? details = null) => MarkAt(stage, Stopwatch.GetTimestamp(), details);
+    internal void MarkAt(string stage, long tick, object? details = null)
     {
         try
         {
-            var tick = Stopwatch.GetTimestamp();
             var elapsed = (tick - origin) * 1000.0 / Stopwatch.Frequency;
             var line = JsonSerializer.Serialize(new { Operation = operation, Stage = stage, ElapsedMs = elapsed, Tick = tick, Frequency = Stopwatch.Frequency, Details = details });
             // Keep file I/O off the save/UI path. Tick, rather than append order, defines ordering.
@@ -58,6 +59,38 @@ internal sealed class SaveTiming : IDisposable
             try { Observed?.Invoke(operation, stage, elapsed, details); } catch { }
         }
         catch { /* Diagnostics must not turn valid media into a failed save. */ }
+    }
+    internal void WatchCapture(IEnumerable<string> directories) => Volatile.Write(ref captureDirectories, directories.ToArray());
+    internal void StopWatchingCapture() => Volatile.Write(ref captureDirectories, []);
+    internal static void CaptureSegmentOpened(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        foreach (var timing in operations.Values)
+            if (Volatile.Read(ref timing.captureDirectories).Contains(directory, StringComparer.OrdinalIgnoreCase))
+                timing.Mark(Path.GetFileName(path).StartsWith("part-", StringComparison.OrdinalIgnoreCase)
+                    ? "producer-next-segment-opened" : "producer-segment-list-update", new { Path = path });
+    }
+    internal void NotificationDisplayed(Dispatcher dispatcher, OverlayWindow window, OverlayNotification notification)
+    {
+        var details = new { notification.Kind, notification.Body };
+        Mark("save-notification-applied", details);
+        EventHandler? rendered = null;
+        EventHandler? closed = null;
+        closed = (_, _) => { CompositionTarget.Rendering -= rendered; window.Closed -= closed; };
+        rendered = (_, _) =>
+        {
+            CompositionTarget.Rendering -= rendered;
+            window.Closed -= closed;
+            if (!window.IsVisible || window.Notification != notification)
+            { Mark("save-notification-superseded-before-render", details); return; }
+            Mark("save-notification-first-wpf-render", details);
+            _ = dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
+            {
+                _ = Task.Run(() => { var code = DwmFlush(); Mark("save-notification-compositor-flushed", new { notification.Body, Code = code }); });
+            });
+        };
+        CompositionTarget.Rendering += rendered;
+        window.Closed += closed;
     }
     internal IDisposable Enter()
     { var old = ambient.Value; ambient.Value = this; return new Restore(old); }

@@ -32,7 +32,9 @@ internal sealed class RewindPacketCopy
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { decision = new(null, "unverified-segment: " + ex.Message); }
-        SaveTiming.Current?.Mark("export-planning-completed", new { Eligible = decision.Plan != null, decision.Reason, Frames = decision.Plan?.Packets.Count });
+        var firstRange = snapshot.Ranges.FirstOrDefault();
+        SaveTiming.Current?.Mark("export-planning-completed", new { Eligible = decision.Plan != null, decision.Reason, Frames = decision.Plan?.Packets.Count,
+            StartOffsetSeconds = firstRange != null && double.IsFinite(firstRange.Start - firstRange.SourceStart) ? (double?)(firstRange.Start - firstRange.SourceStart) : null });
         return decision;
     }
     private static Decision Build(RewindExportSnapshot snapshot)
@@ -68,8 +70,8 @@ internal sealed class RewindPacketCopy
     internal async Task<Result> Run(Decision decision, RewindVideoExport fallback, string encoder, string closedSample,
         IReadOnlyList<string> arguments, string temporary, Func<Task> verify)
     {
-        // Freeze the caller's argument list too. In particular, audio and -t never
-        // change between copy, NVDEC and software attempts.
+        // Freeze the caller's argument list too. Each strategy uses the same owned
+        // audio inputs; packet copy additionally bounds its verified video prefix.
         var original = Array.AsReadOnly(arguments.ToArray());
         var failed = false;
         if (decision.Plan is { } plan)
@@ -77,7 +79,10 @@ internal sealed class RewindPacketCopy
             try
             {
                 SaveTiming.Current?.Mark("packet-copy-started", new { Frames = plan.Packets.Count });
-                var result = await run("ffmpeg", Arguments(original), 180);
+                var copy = Arguments(original).ToList();
+                copy.InsertRange(copy.Count - 2, ["-frames:v", plan.Packets.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+                if (!copy.Contains("-t")) copy.InsertRange(copy.Count - 2, ["-t", plan.Snapshot.Duration.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)]);
+                var result = await run("ffmpeg", copy, 180);
                 SaveTiming.Current?.Mark("packet-copy-processing-completed", new { result.Code });
                 if (result.Code != 0 || !string.IsNullOrWhiteSpace(result.Error)) throw new IOException("Не удалось скопировать видео: " + result.Error);
                 await verify();
@@ -124,7 +129,7 @@ internal sealed class RewindPacketCopy
         if (filters.Length == 0) args.RemoveRange(filter, 2); else args[filter + 1] = string.Join(';', filters);
         args[args.IndexOf("[v]")] = "0:v:0";
         var encoder = args.LastIndexOf("-c:v"); args[encoder + 1] = "copy";
-        foreach (var option in new[] { "-preset", "-tune", "-rc", "-cq", "-b:v", "-maxrate", "-bufsize", "-bf", "-r" })
+        foreach (var option in new[] { "-preset", "-tune", "-rc", "-cq", "-b:v", "-maxrate", "-bufsize", "-bf", "-r", "-enc_time_base:v" })
         { var at = args.IndexOf(option); if (at >= 0) args.RemoveRange(at, 2); }
         return args;
     }
