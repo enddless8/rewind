@@ -36,15 +36,18 @@ Sources: [FFmpeg legal information](https://ffmpeg.org/legal.html), [GPLv3](http
 
 ## Fonts
 
-All three font binaries are embedded as WPF resources. They retain their own copyright holders and licensing terms; Rewind's GPL-3.0-or-later grant does not relicense them.
+The three Rewindtica v0.1 faces and Inter Regular are embedded as WPF resources. They retain their own copyright holders and licensing terms; Rewind's GPL-3.0-or-later grant does not relicense them.
 
 | Asset | Metadata / license | Status |
 | --- | --- | --- |
 | `assets/fonts/Inter_28pt-Regular.ttf` | Inter 28pt Regular, version 4.001 / `66647c0bb`; Copyright 2016 The Inter Project Authors; SIL Open Font License 1.1 | Full upstream copyright/OFL text added as [LICENSE-Inter.txt](assets/fonts/LICENSE-Inter.txt), fetched from the corresponding source revision. Preserve it with font redistribution/embedding. |
-| `assets/fonts/coolvetica.otf` | Coolvetica Regular, version 5.001; Copyright 1999–2022 Typodermic Fonts Inc.; Ray Larabie | Exact supplied EULA and evidence of software embedding/public font-file redistribution rights are absent. OS/2 `fsType=4` is preview/print metadata, not a substitute for permission. |
-| `assets/fonts/CoolveticaLight.ttf` | Coolvetica Lt Regular, version 5.000; © 1999–2018 Typodermic Fonts Inc.; Ray Larabie | Exact supplied EULA and rights are absent. `fsType=0` does not establish copyright permission or extend a purchase license. |
+| `assets/fonts/Rewindtica-Bold.ttf` | Rewindtica v0.1.0 Bold (700), modified Unbounded; Copyright 2022 The Unbounded Project Authors; modifications 2026 enddless8; SIL OFL 1.1 | Copied unchanged from the approved v0.1 installable package. |
+| `assets/fonts/Rewindtica-Medium.ttf` | Rewindtica v0.1.0 Medium (500), same attribution and SIL OFL 1.1 | Embedded for real Medium face selection; current approved text styles use Bold or Light. |
+| `assets/fonts/Rewindtica-Light.ttf` | Rewindtica v0.1.0 Light (300), same attribution and SIL OFL 1.1 | Used for main-window durations. |
 
-Typodermic distinguishes fixed artwork from working font embedding and says the agreement supplied with the **exact style/copy** controls; a current agreement does not replace an earlier perpetual agreement. Do not assume a free desktop download covers embedding in a WPF application or publishing the OTF/TTF in a public repository. See [Typodermic licensing](https://typodermicfonts.com/license/) and [Coolvetica](https://typodermicfonts.com/coolvetica/). Obtain the original agreements and confirm both intended uses before public redistribution. No fonts were removed, converted, substituted or relicensed here.
+The supplied upstream copyright and complete SIL OFL 1.1 text are preserved byte-for-byte in [LICENSE-Rewindtica.txt](assets/fonts/LICENSE-Rewindtica.txt); [NOTICE-Rewindtica.txt](assets/fonts/NOTICE-Rewindtica.txt) records the derivative attribution. Both and the Inter license are copied into `licenses/fonts/` by build and publish. No font outlines or metadata are modified. See the [official OFL text](https://openfontlicense.org/open-font-license-official-text/) for the font's separate terms.
+
+Coolvetica Regular/Light have been removed from the current application resources and source tree. Historical Git commits and private ignored build/research snapshots still contain those files. A clean working tree does not sanitize public history. Do not publish the original repository or old binary snapshots; select and verify a separate publication strategy first. No history rewrite has been performed.
 
 ## SVGs, application/tray artwork and adapted code
 
@@ -58,7 +61,7 @@ These are provenance questions, not a claim that any asset is infringing. Requir
 
 Downloaded .NET SDK/runtime tools, FFmpeg, cached NAudio packages, local research/sample files and experimental FFmpeg builds live under ignored `.tools/` or `artifacts/`; they do not enter the first commit. The optional icon-preparation scripts require Python, Pillow and NumPy. Those external development dependencies are not vendored by this repository and retain their own licenses.
 
-The original-code license change is effective independently of the unresolved redistribution questions for Coolvetica, graphics and binary packaging. Public redistribution of those files needs the applicable permissions and notices; binary publication additionally needs the FFmpeg Corresponding Source arrangement and exact runtime/font/library notices. The existing publish script does not copy the root LICENSE or standalone Inter license either; address the complete notice packaging separately. The open questions above are not claims of infringement or an automatic license grant for those materials.
+The original-code license change is effective independently of unresolved graphics and binary packaging questions. Binary publication still needs the FFmpeg Corresponding Source arrangement, bundled-library notices and exact runtime notices. The project now copies root LICENSE, NOTICE, this document and font license/attribution files into build/publish outputs. That does not settle the remaining release audit or sanitize historical Git objects. The open questions above are not claims of infringement or an automatic license grant for those materials.
 
 NAudio MIT license:
 

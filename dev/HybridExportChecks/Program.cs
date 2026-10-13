@@ -19,7 +19,7 @@ internal static class Program
             if (args[0] is "live" or "native-failures")
             {
                 var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
-                app.Resources["CoolveticaFont"] = new System.Windows.Media.FontFamily("pack://application:,,,/Rewind;component/assets/fonts/#Coolvetica");
+                app.Resources["RewindticaFont"] = new System.Windows.Media.FontFamily("pack://application:,,,/Rewind;component/assets/fonts/#Rewindtica");
                 app.Resources["InterFont"] = new System.Windows.Media.FontFamily("pack://application:,,,/Rewind;component/assets/fonts/#Inter 28pt 28pt");
                 app.Dispatcher.InvokeAsync(async () =>
                 {

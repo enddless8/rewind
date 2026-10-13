@@ -10,7 +10,7 @@
    <Grid x:Name="LargeFields" Margin="29,0,18,0">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="MediaGap" Width="20"/><ColumnDefinition x:Name="MediaColumn" Width="171"/></Grid.ColumnDefinitions>
     <StackPanel x:Name="Copy" VerticalAlignment="Top" Margin="0,10,0,0">
-     <TextBlock x:Name="Heading" Foreground="White" FontFamily="{StaticResource CoolveticaFont}" FontWeight="Normal" FontSize="43.551216" Height="52"/>
+     <TextBlock x:Name="Heading" Foreground="White" FontFamily="{StaticResource RewindticaFont}" FontWeight="Bold" FontSize="43.551216" Height="52"/>
      <Viewbox x:Name="BodyBox" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Height="62" Margin="0,14,0,0">
       <TextBlock x:Name="Body" Foreground="White" FontFamily="{StaticResource InterFont}" FontSize="25.647058" LineHeight="31" LineStackingStrategy="BlockLineHeight"/>
      </Viewbox>
@@ -27,8 +27,8 @@
     </Image>
    </Grid>
    <Grid x:Name="MicroFields" Margin="29,0,18,0" Visibility="Collapsed">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="151"/><ColumnDefinition Width="74.16667"/><ColumnDefinition Width="9"/><ColumnDefinition Width="25.6667"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-    <TextBlock Text="Rewind" Foreground="White" FontFamily="{StaticResource CoolveticaFont}" FontSize="43.551216" Height="52" VerticalAlignment="Top" Margin="0,1,0,0"/>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="176"/><ColumnDefinition Width="81"/><ColumnDefinition Width="9"/><ColumnDefinition Width="25.6667"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <TextBlock Text="Rewind" Foreground="White" FontFamily="{StaticResource RewindticaFont}" FontWeight="Bold" FontSize="43.551216" Height="52" VerticalAlignment="Top" Margin="0,1,0,0"/>
     <TextBlock x:Name="MicroBody" Grid.Column="1" Grid.ColumnSpan="4" Foreground="White" FontFamily="{StaticResource InterFont}" FontSize="25.647058" VerticalAlignment="Top" Margin="0,14,0,0"/>
     <Image x:Name="CompletionCheck" Grid.Column="3" Width="25.6667" Height="19.25" VerticalAlignment="Top" Margin="0,20.16667,0,0" Source="{StaticResource OverlayFigmaCheck}" Visibility="Collapsed"/>
    </Grid>

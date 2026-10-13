@@ -2,7 +2,10 @@
 **/bin/
 **/obj/
 dist/
-artifacts/
+artifacts/*
+!artifacts/rewindtica-integration/
+artifacts/rewindtica-integration/*
+!artifacts/rewindtica-integration/REPORT.md
 *.user
 
 # Build/publish outputs and generated test/profiling results.
@@ -85,3 +88,6 @@ NuGet.Config.local
 *.p12
 *.key
 *.pem
+
+# Generated development artifacts, benchmarks and test reports
+/artifacts/

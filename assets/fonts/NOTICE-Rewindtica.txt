@@ -1,0 +1,16 @@
+Rewindtica v0.1.0 — modified version of Unbounded
+
+Copyright 2022 The Unbounded Project Authors
+(https://github.com/googlefonts/unbounded)
+Rewindtica modifications 2026 by enddless8.
+
+Rewindtica-Bold.ttf: Bold, weight 700
+Rewindtica-Medium.ttf: Medium, weight 500
+Rewindtica-Light.ttf: Light, weight 300
+
+These are the user-approved Rewindtica v0.1 installable files, copied
+without changing outlines or metadata. They are not Phase 1/2 builds.
+
+The font software remains licensed under the SIL Open Font License 1.1,
+separately from Rewind's GPL-3.0-or-later application code.
+Preserve LICENSE-Rewindtica.txt and this notice with distributions.

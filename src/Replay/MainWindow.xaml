@@ -27,8 +27,8 @@
                             <Image Source="{StaticResource MainFigmaFolderIcon}" Width="76" Height="76"/>
                         </Button>
                     </Grid>
-                    <Grid Grid.Row="1" Width="282.5" HorizontalAlignment="Center">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="225.5"/><ColumnDefinition Width="12"/><ColumnDefinition Width="45"/></Grid.ColumnDefinitions>
+                    <Grid Grid.Row="1" Width="349" HorizontalAlignment="Center">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="292"/><ColumnDefinition Width="12"/><ColumnDefinition Width="45"/></Grid.ColumnDefinitions>
                         <TextBlock x:Name="MainTitle" Text="Rewind" Style="{StaticResource RewindTitle}"/>
                         <Button x:Name="RewindStatusButton" Grid.Column="2" Style="{StaticResource RewindIconButton}" Width="45" Height="23.5" Padding="0" Margin="0,9,0,0" VerticalAlignment="Center" Click="RewindStatus_Click" ToolTip="Буфер Rewind выключен" AutomationProperties.Name="Выбрать состояние Rewind">
                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23.5"/><ColumnDefinition Width="5.5"/><ColumnDefinition Width="16"/></Grid.ColumnDefinitions>
@@ -65,7 +65,11 @@
                             <Button x:Name="ToggleButton" Grid.Column="1" Style="{StaticResource MainActionCircle}" Click="Recording_Click" ToolTipService.ShowOnDisabled="True" ToolTip="Начать запись" AutomationProperties.Name="Начать запись">
                                 <Image x:Name="RecordingIcon" Source="{StaticResource MainFigmaPlayIcon}" Width="71" Height="86" HorizontalAlignment="Center" VerticalAlignment="Center"><Image.RenderTransform><TranslateTransform X="9" Y="0.5"/></Image.RenderTransform></Image>
                             </Button>
-                            <TextBlock x:Name="RecordingLabel" Grid.Row="1" Grid.ColumnSpan="3" Margin="9.95825,8,0,0" Width="300" Text="Начать запись" Style="{StaticResource RewindActionLabel}" TextWrapping="NoWrap" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="RecordingLabel" Grid.Row="1" Grid.ColumnSpan="3" Margin="9.95825,8,0,0" Width="300" Text="Начать запись" TextWrapping="NoWrap" HorizontalAlignment="Center">
+                                <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource RewindActionLabel}"><Style.Triggers>
+                                    <Trigger Property="Text" Value="Остановить запись"><Setter Property="FontSize" Value="26"/></Trigger>
+                                </Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
                             <TextBlock x:Name="RecordingDurationText" Grid.Row="2" Grid.Column="1" Text="0 сек" Visibility="Hidden" Style="{StaticResource RewindDurationLabel}" AutomationProperties.Name="Длительность записи"/>
                         </Grid>
                         <Grid Grid.Column="4">
@@ -73,14 +77,14 @@
                             <Button x:Name="ScreenshotButton" Style="{StaticResource MainActionCircle}" Click="Screenshot_Click" ToolTipService.ShowOnDisabled="True" ToolTip="Сделать скриншот выбранного источника" AutomationProperties.Name="Сделать скриншот">
                                 <Image Source="{StaticResource MainFigmaScreenshotIcon}" Width="116.5" Height="116.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Button>
-                            <TextBlock Grid.Row="1" Text="Сделать скриншот" Style="{StaticResource RewindActionLabel}" TextWrapping="NoWrap"/>
+                            <TextBlock Grid.Row="1" Text="Сделать скриншот" Style="{StaticResource RewindActionLabel}" TextWrapping="NoWrap" Width="330" Margin="-29,8,-29,0" HorizontalAlignment="Center"/>
                         </Grid>
                     </Grid>
                     <Button x:Name="MicrophoneQuickButton" Grid.Row="5" Style="{StaticResource RewindIconButton}" Width="64.5" Height="64.5" Padding="0" HorizontalAlignment="Center" Click="MicrophoneQuick_Click" ToolTipService.ShowOnDisabled="True" ToolTip="Выключить микрофон" AutomationProperties.Name="Выключить микрофон">
                         <Image x:Name="MicrophoneQuickIcon" Source="{StaticResource MainFigmaMicrophoneIcon}" Width="64.5" Height="64.5"/>
                     </Button>
                     <!-- Overlay spans header and gap; visibility never affects measured rows. -->
-                    <Grid Grid.Row="1" Grid.RowSpan="2" Width="282.5" HorizontalAlignment="Center" Panel.ZIndex="5">
+                    <Grid Grid.Row="1" Grid.RowSpan="2" Width="349" HorizontalAlignment="Center" Panel.ZIndex="5">
                         <Border x:Name="RewindSelector" Width="53" Height="78.5" Margin="0,37,0,0" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" Background="#333131" BorderBrush="#535353" BorderThickness="0.5" CornerRadius="13.5" KeyboardNavigation.TabNavigation="Cycle">
                             <Grid Margin="0,0,0,5.5"><Grid.RowDefinitions><RowDefinition Height="28.5"/><RowDefinition Height="22"/><RowDefinition Height="22"/></Grid.RowDefinitions>
                                 <Button x:Name="ExpandedRewindStatusButton" Style="{StaticResource RewindSelectorAction}" Click="RewindStatus_Click" AutomationProperties.Name="Закрыть выбор состояния Rewind">
@@ -119,7 +123,7 @@
                         <Button Content="← На главный экран" Click="Back_Click" Background="Transparent" Foreground="{StaticResource RewindMuted}" Padding="4,10" Margin="0" FontSize="12" HorizontalAlignment="Left" />
                     </StackPanel>
                     <StackPanel>
-                        <TextBlock Text="Настройки" FontSize="37.5" FontWeight="Normal" Foreground="White" Margin="6,0,0,7" FontFamily="{StaticResource CoolveticaFont}" />
+                        <TextBlock Text="Настройки" FontSize="28" FontWeight="Bold" Foreground="White" Margin="6,0,0,7" FontFamily="{StaticResource RewindticaFont}" />
                         <RadioButton x:Name="CaptureNav" GroupName="SettingsNavigation" Checked="SettingsNavigation_Checked" IsChecked="True" Style="{StaticResource SettingsNavigation}" AutomationProperties.Name="Захват видео">
                             <StackPanel Orientation="Horizontal">
                                 <Image Source="{StaticResource FigmaCaptureIcon}" Width="27.5" Height="27.5" Stretch="Uniform" Style="{StaticResource FigmaNavigationIcon}" Margin="0,0,5,0" />

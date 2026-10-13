@@ -45,7 +45,7 @@
   <DrawingImage x:Key="FigmaChevronIcon"><DrawingImage.Drawing><DrawingGroup ClipGeometry="M0,0 H27 V15 H0 Z"><GeometryDrawing Brush="Transparent"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,27,15"/></GeometryDrawing.Geometry></GeometryDrawing><GeometryDrawing Geometry="F1 M1.57373 1.57373L13.3768 13.3768L25.1798 1.57373"><GeometryDrawing.Pen><Pen Brush="#A3FFFFFF" Thickness="3.14747" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/></GeometryDrawing.Pen></GeometryDrawing></DrawingGroup></DrawingImage.Drawing></DrawingImage>
   <!-- Figma node 33:320; original SVG viewBox preserved. -->
   <DrawingImage x:Key="FigmaInfoIcon"><DrawingImage.Drawing><DrawingGroup ClipGeometry="M0,0 H45 V45 H0 Z"><GeometryDrawing Brush="Transparent"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,45,45"/></GeometryDrawing.Geometry></GeometryDrawing><GeometryDrawing Geometry="F1 M22.5 20.625V30M22.5 39.375C13.1802 39.375 5.625 31.8199 5.625 22.5C5.625 13.1802 13.1802 5.625 22.5 5.625C31.8199 5.625 39.375 13.1802 39.375 22.5C39.375 31.8199 31.8199 39.375 22.5 39.375ZM22.5934 15V15.1875L22.4066 15.1879V15H22.5934Z"><GeometryDrawing.Pen><Pen Brush="#8CFFFFFF" Thickness="3.75" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/></GeometryDrawing.Pen></GeometryDrawing></DrawingGroup></DrawingImage.Drawing></DrawingImage>
-  <FontFamily x:Key="CoolveticaFont">pack://application:,,,/Rewind;component/assets/fonts/#Coolvetica</FontFamily>
+  <FontFamily x:Key="RewindticaFont">pack://application:,,,/Rewind;component/assets/fonts/#Rewindtica</FontFamily>
   <SolidColorBrush x:Key="RewindBackground" Color="#1E1E1E"/>
   <SolidColorBrush x:Key="RewindAction" Color="#17D9D9D9"/>
   <SolidColorBrush x:Key="RewindActionHover" Color="#393939"/>
@@ -60,15 +60,17 @@
    <Setter Property="Template"><Setter.Value><ControlTemplate><Rectangle Margin="4" RadiusX="5" RadiusY="5" Stroke="{StaticResource RewindMuted}" StrokeThickness="1" StrokeDashArray="1 2"/></ControlTemplate></Setter.Value></Setter>
   </Style>
   <Style x:Key="RewindTitle" TargetType="TextBlock">
-   <Setter Property="FontFamily" Value="{StaticResource CoolveticaFont}"/><Setter Property="FontSize" Value="75.5602"/><Setter Property="FontWeight" Value="Normal"/>
+   <Setter Property="FontFamily" Value="{StaticResource RewindticaFont}"/><Setter Property="FontSize" Value="75.5602"/><Setter Property="FontWeight" Value="Bold"/>
    <Setter Property="Foreground" Value="{StaticResource RewindForeground}"/><Setter Property="TextWrapping" Value="NoWrap"/>
   </Style>
   <Style x:Key="RewindActionLabel" TargetType="TextBlock">
-   <Setter Property="FontFamily" Value="{StaticResource CoolveticaFont}"/><Setter Property="FontSize" Value="33.5317"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="LineHeight" Value="40"/>
+   <!-- Figma's 33.5317 DIP labels collide with the wider v0.1 glyphs.
+        30 DIP keeps the three actions readable without moving their circles. -->
+   <Setter Property="FontFamily" Value="{StaticResource RewindticaFont}"/><Setter Property="FontSize" Value="30"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="LineHeight" Value="40"/>
    <Setter Property="Foreground" Value="{StaticResource RewindForeground}"/><Setter Property="TextAlignment" Value="Center"/>
    <Setter Property="TextWrapping" Value="Wrap"/><Setter Property="Margin" Value="0,8,0,0"/>
   </Style>
-  <Style x:Key="RewindDurationLabel" TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource CoolveticaFont}"/><Setter Property="FontWeight" Value="Light"/><Setter Property="FontSize" Value="24"/><Setter Property="Foreground" Value="#8CFFFFFF"/><Setter Property="TextAlignment" Value="Center"/></Style>
+  <Style x:Key="RewindDurationLabel" TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource RewindticaFont}"/><Setter Property="FontWeight" Value="Light"/><Setter Property="FontSize" Value="24"/><Setter Property="Foreground" Value="#8CFFFFFF"/><Setter Property="TextAlignment" Value="Center"/></Style>
   <Style x:Key="RewindHelper" TargetType="TextBlock">
    <Setter Property="FontSize" Value="13"/><Setter Property="Foreground" Value="{StaticResource RewindMuted}"/>
    <Setter Property="TextWrapping" Value="Wrap"/><Setter Property="TextAlignment" Value="Center"/>
@@ -149,7 +151,7 @@
   <Style x:Key="AdvancedNumberText" TargetType="TextBox" BasedOn="{StaticResource SettingsPathText}"><Setter Property="MinWidth" Value="24"/><Setter Property="MaxWidth" Value="100"/><Setter Property="Padding" Value="10,0,2,0"/></Style>
   <Style x:Key="AdvancedUnitText" TargetType="TextBlock"><Setter Property="FontSize" Value="16.7727"/><Setter Property="Foreground" Value="{StaticResource RewindMuted}"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="0,0,8,0"/></Style>
   <Style x:Key="FigmaNavigationIcon" TargetType="Image"><Setter Property="Width" Value="27.5"/><Setter Property="Height" Value="27.5"/><Setter Property="Margin" Value="0,0,5,0"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Opacity" Value="0.58"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True"><Setter Property="Opacity" Value="1"/></DataTrigger></Style.Triggers></Style>
-  <Style x:Key="SettingsHeading" TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource CoolveticaFont}"/><Setter Property="FontSize" Value="24"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
+  <Style x:Key="SettingsHeading" TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource RewindticaFont}"/><Setter Property="FontSize" Value="24"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
   <Style x:Key="SettingsLabel" TargetType="TextBlock"><Setter Property="FontSize" Value="18.3869"/><Setter Property="Foreground" Value="White"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="TextWrapping" Value="Wrap"/></Style>
   <Style x:Key="SettingsHelp" TargetType="TextBlock"><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="{StaticResource RewindMuted}"/><Setter Property="Margin" Value="0,3,12,0"/><Setter Property="TextWrapping" Value="Wrap"/></Style>
   <Style x:Key="SettingsInfoToolTip" TargetType="ToolTip">

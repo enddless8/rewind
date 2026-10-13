@@ -21,7 +21,7 @@ internal static class Program
                 // The standalone harness has no App.xaml startup (and must not
                 // create MainWindow/mutex/private queue). Reuse its font resources
                 // so the real notification XAML can load without UI substitution.
-                app.Resources["CoolveticaFont"] = new System.Windows.Media.FontFamily("pack://application:,,,/Rewind;component/assets/fonts/#Coolvetica");
+                app.Resources["RewindticaFont"] = new System.Windows.Media.FontFamily("pack://application:,,,/Rewind;component/assets/fonts/#Rewindtica");
                 app.Resources["InterFont"] = new System.Windows.Media.FontFamily("pack://application:,,,/Rewind;component/assets/fonts/#Inter 28pt 28pt");
                 app.Dispatcher.InvokeAsync(async () =>
                 {
