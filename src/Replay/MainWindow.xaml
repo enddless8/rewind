@@ -4,7 +4,19 @@
             <RowDefinition />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid x:Name="MainView" Grid.RowSpan="2" Margin="-28">
+        <Grid x:Name="MainView">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Grid.RowSpan" Value="2" />
+                    <Setter Property="Margin" Value="-28" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ElementName=FeedbackPanel, Path=IsVisible}" Value="True">
+                            <Setter Property="Grid.RowSpan" Value="1" />
+                            <Setter Property="Margin" Value="-28,-28,-28,0" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
             <!-- A single uniform scale preserves Figma proportions inside the fixed native
                  window; the layout uses Grid rows/columns, never canvas coordinates. -->
             <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -691,6 +703,8 @@
                         <StackPanel x:Name="HotkeyHelp" Visibility="{Binding ElementName=HotkeysNav, Path=IsChecked, Converter={StaticResource PageVisibility}}">
                             <TextBlock x:Name="HotkeyHint" Style="{StaticResource SettingsHelp}" Margin="0,4,0,0" />
                             <TextBlock x:Name="HotkeyEditStatus" Style="{StaticResource SettingsHelp}" Foreground="{StaticResource RewindWarning}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
+                            <Button Content="Повторить регистрацию" Click="RetryHotkeys_Click" HorizontalAlignment="Left" Margin="0,10,0,0" Padding="12,6" ToolTip="После закрытия приложения, занявшего сочетание" />
+                            <Button Content="Восстановить стандартные сочетания" Click="RestoreHotkeyDefaults_Click" HorizontalAlignment="Left" Margin="0,8,0,0" Padding="12,6" ToolTip="Включить Rewind: Ctrl+Alt+F8; сохранить: Ctrl+Alt+F10; запись: Ctrl+Alt+F9; скриншот: Ctrl+Alt+F1. Микрофон: без сочетания." />
                         </StackPanel>
                         <StackPanel Visibility="Collapsed">
                             <TextBlock x:Name="StatusText" />
@@ -701,9 +715,10 @@
                 </ScrollViewer>
             </Grid>
         </Grid>
-        <StackPanel Grid.Row="1" Margin="0,8,0,0" MaxWidth="680" MinHeight="0">
+        <StackPanel x:Name="FeedbackPanel" Grid.Row="1" Margin="0,8,0,0" MaxWidth="680" MinHeight="0">
             <TextBlock x:Name="MainStateText" Style="{StaticResource RewindHelper}" MaxHeight="58" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
             <TextBlock x:Name="WarningText" Style="{StaticResource RewindHelper}" Foreground="{StaticResource RewindWarning}" MaxHeight="58" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
+            <TextBlock x:Name="HotkeyWarningText" Style="{StaticResource RewindHelper}" Foreground="{StaticResource RewindWarning}" MaxHeight="58" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" AutomationProperties.LiveSetting="Polite" />
             <TextBlock x:Name="LastClipText" Style="{StaticResource RewindHelper}" MaxHeight="38" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
             <StackPanel.Style>
                 <Style TargetType="StackPanel">
@@ -712,6 +727,7 @@
                             <MultiDataTrigger.Conditions>
                                 <Condition Binding="{Binding ElementName=MainStateText, Path=Text}" Value="" />
                                 <Condition Binding="{Binding ElementName=WarningText, Path=Text}" Value="" />
+                                <Condition Binding="{Binding ElementName=HotkeyWarningText, Path=Text}" Value="" />
                                 <Condition Binding="{Binding ElementName=LastClipText, Path=Text}" Value="" />
                             </MultiDataTrigger.Conditions>
                             <Setter Property="Visibility" Value="Collapsed" />

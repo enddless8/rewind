@@ -137,7 +137,7 @@ internal sealed class OverlayNotificationService : IAsyncDisposable
         item.Revision++; item.Timer.Stop();
         item.Window.Revive(); item.Window.ApplyNotification(notification);
         SaveTiming.ForOperation(notification.SaveOperationId)?.NotificationDisplayed(dispatcher, item.Window, notification);
-        StartLifetime(item); Shown?.Invoke(notification);
+        StartLifetime(item); HotkeyDiagnostics.Mark("overlay-shown", new { Kind = notification.Kind.ToString(), notification.Title, notification.Body }); Shown?.Invoke(notification);
         if (notification.Kind == OverlayNotificationKind.RewindSaved) SaveTiming.ForOperation(notification.SaveOperationId)?.OverlayDisplayed(dispatcher);
         if (notification.Kind == OverlayNotificationKind.RecordingSaved && notification.MediaPath is { } recorded)
             SaveTiming.ForMedia(recorded)?.OverlayDisplayed(dispatcher);
@@ -191,7 +191,7 @@ internal sealed class OverlayNotificationService : IAsyncDisposable
                         timer.Stop(); var revision = item.Revision;
                         window.FadeOut(() => { if (item.Revision == revision) Remove(item); });
                     };
-                    StartLifetime(item); Shown?.Invoke(next.Notification);
+                    StartLifetime(item); HotkeyDiagnostics.Mark("overlay-shown", new { Kind = next.Notification.Kind.ToString(), next.Notification.Title, next.Notification.Body }); Shown?.Invoke(next.Notification);
                     if (next.Notification.Kind == OverlayNotificationKind.RewindSaved) SaveTiming.ForOperation(next.Notification.SaveOperationId)?.OverlayDisplayed(dispatcher);
                     if (next.Notification.Kind == OverlayNotificationKind.RecordingSaved && next.Notification.MediaPath is { } recorded)
                         SaveTiming.ForMedia(recorded)?.OverlayDisplayed(dispatcher);

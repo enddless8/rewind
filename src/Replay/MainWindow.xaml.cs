@@ -74,7 +74,7 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) => { source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle); source.AddHook(WindowProc); RegisterKeys(); };
         SourceInitialized += (_, _) => { ApplyDarkWindowChrome(); ApplyTitleBarIcon(); };
         Loaded += (_, _) => ApplyTitleBarIcon();
-        Closed += (_, _) => titleBarIcon.Dispose();
+        Closed += (_, _) => { DetachHotkeys(); titleBarIcon.Dispose(); };
         Closing += OnClosing;
         Deactivated += (_, _) => { CancelHotkeyEdit(); CloseRewindSelector(); };
         timer.Tick += async (_, _) => await Tick(); timer.Start();
@@ -323,8 +323,18 @@ public partial class MainWindow : Window
     private async Task SaveClip(long? receivedTick = null, string commandSource = "button")
     {
         receivedTick ??= Stopwatch.GetTimestamp();
-        if (recovering) { saveAfterRecovery = true; return; }
-        if (exiting || recorder == null || saving || busy) return;
+        if (recovering) { saveAfterRecovery = true; HotkeyDiagnostics.Mark("save-deferred", new { Reason = "capture-recovery" }); return; }
+        if (exiting || recorder == null || saving || busy)
+        {
+            HotkeyDiagnostics.Mark("save-rejected", new { exiting, NoRecorder = recorder == null, saving, busy });
+            if (commandSource == "hotkey" && !exiting)
+            {
+                var reason = recorder == null ? "Сначала включи Rewind. Актуальные сочетания — в настройках горячих клавиш." : "Rewind занят запуском или приёмом клипа. Повтори попытку.";
+                LastClipText.Text = "Клип не принят: " + reason;
+                Notify("Клип не принят", reason, true);
+            }
+            return;
+        }
         var saveRecorder = recorder;
         var commandDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         saveCommands.Add(commandDone.Task);
@@ -341,6 +351,7 @@ public partial class MainWindow : Window
             UpdateMainPresentation();
             var saveMonitor = OverlayTarget();
             var accepted = await acceptance;
+            HotkeyDiagnostics.Mark("save-accepted", new { Stage = accepted.Stage.ToString() });
             latestSaveOperation = saveOperation;
             LastClipText.Text = accepted.Stage == SaveClipStage.Queued ? "Клип в очереди" : accepted.Stage == SaveClipStage.Exporting ? "Сохранение клипа" : "Подготовка клипа";
             overlays?.BeginRewindSave(saveOperation, saveMonitor, stage: accepted.Stage);
@@ -349,6 +360,7 @@ public partial class MainWindow : Window
             UpdateMainPresentation();
             started = ObserveQueuedSave(accepted, saveOperation);
             var clip = await accepted.Completion;
+            HotkeyDiagnostics.Mark("save-published", new { clip.Path, clip.Duration });
             timing?.Mark("save-returned", new { clip.Path, clip.Duration });
             LastClipText.Text = $"Сохранено {clip.Duration:F0} с · {Path.GetFileName(clip.Path)}";
             overlays?.CompleteRewindSave(saveOperation, clip);
@@ -364,7 +376,7 @@ public partial class MainWindow : Window
             if (clip.Warnings.Count > 0) Notify("Клип сохранён с предупреждением", string.Join("\n", clip.Warnings), true);
             if (settings.Sounds) { if (clip.Warnings.Count > 0) SystemSounds.Exclamation.Play(); else SystemSounds.Asterisk.Play(); }
         }
-        catch (Exception ex) { timing?.Mark("save-failed", new { ex.Message }); overlays?.FailRewindSave(saveOperation); LastClipText.Text = "Клип не сохранён: " + ex.Message; Notify("Ошибка сохранения", ex.Message, true); if (settings.Sounds) SystemSounds.Hand.Play(); }
+        catch (Exception ex) { HotkeyDiagnostics.Mark("save-failed", new { ex.Message }); timing?.Mark("save-failed", new { ex.Message }); overlays?.FailRewindSave(saveOperation); LastClipText.Text = "Клип не сохранён: " + ex.Message; Notify("Ошибка сохранения", ex.Message, true); if (settings.Sounds) SystemSounds.Hand.Play(); }
         finally { await started; if (!acceptedRequest) saving = false; saveCommands.Remove(commandDone.Task); commandDone.TrySetResult(); UpdateMainPresentation(); }
     }
     private async Task ObserveQueuedSave(AcceptedSave accepted, Guid operation)
@@ -450,8 +462,8 @@ public partial class MainWindow : Window
         }
         if (saveAfterRecovery) { saveAfterRecovery = false; await SaveClip(); }
     }
-    private void Notify(string title, string body, bool warning) { tray.ShowBalloonTip(5000, title, body.Length > 240 ? body[..240] + "…" : body, warning ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info); }
-    private void ShowWindow() { UpdateMainPresentation(); Show(); WindowState = WindowState.Normal; Activate(); }
+    private void Notify(string title, string body, bool warning) { HotkeyDiagnostics.Mark("notification", new { title, body, warning }); tray.ShowBalloonTip(5000, title, body.Length > 240 ? body[..240] + "…" : body, warning ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info); }
+    private void ShowWindow() { RegisterKeys(); UpdateMainPresentation(); Show(); WindowState = WindowState.Normal; Activate(); }
     private void OpenFolder() { Directory.CreateDirectory(settings.OutputDirectory); Process.Start(new ProcessStartInfo(settings.OutputDirectory) { UseShellExecute = true }); }
     private void OpenFolder_Click(object sender, RoutedEventArgs e) => OpenFolder();
     private void Refresh_Click(object sender, RoutedEventArgs e) => RefreshSources();
@@ -470,8 +482,10 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e) { if (!exiting) { e.Cancel = true; CloseRewindSelector(); _ = StopMicrophoneTest(); Hide(); } }
     private async Task Exit()
     {
+        if (exiting) return;
         if (saving || busy) { Notify("Rewind занят", "Дождись завершения сохранения или запуска записи.", true); return; }
         exiting = true; timer.Stop();
+        DetachHotkeys();
         if (overlays != null) await overlays.DisposeAsync();
         screenshotCancellation?.Cancel();
         if (screenshotOperation != null) { try { await screenshotOperation; } catch { /* The screenshot command reports local errors. */ } }
@@ -481,19 +495,23 @@ public partial class MainWindow : Window
         await Task.WhenAll(saveCommands.ToArray());
         await compression.DisposeAsync();
         overlayCompressionJobs.Clear();
-        ReleaseHotkey(saveRegistration); ReleaseHotkey(toggleRegistration);
-        ReleaseHotkey(recordingRegistration); ReleaseHotkey(screenshotRegistration);
-        ReleaseHotkey(microphoneRegistration);
         tray.Visible = false; tray.Dispose(); trayIcon.Dispose(); Application.Current.Shutdown();
     }
     private void RegisterKeys()
     {
         if (source == null) return;
-        hotkeyWarning = null;
+        Dispatcher.VerifyAccess();
+        var previousWarning = hotkeyWarning;
+        HotkeyDiagnostics.Mark("configuration", new { Hwnd = source.Handle.ToInt64(), IsVisible, WindowState, Bindings = Enum.GetValues<HotkeyAction>().Select(a =>
+            new { Action = a.ToString(), HotkeyValue(settings, a).Enabled, HotkeyValue(settings, a).Modifiers, HotkeyValue(settings, a).Key }).ToArray() });
         foreach (var action in Enum.GetValues<HotkeyAction>()) RegisterConfiguredHotkey(action);
         RefreshHotkeyControls();
-        HotkeyEditStatus.Text = hotkeyWarning ?? "";
-        if (hotkeyWarning != null) WarningText.Text = hotkeyWarning;
+        UpdateHotkeyWarnings();
+        if (hotkeyWarning != null && hotkeyWarning != previousWarning)
+        {
+            var warning = hotkeyWarning;
+            Dispatcher.BeginInvoke(() => { if (!exiting && hotkeyWarning == warning) Notify("Горячие клавиши недоступны", "Открой Настройки → Горячие клавиши: выбери свободные сочетания или повтори регистрацию после освобождения сочетаний.\n" + warning, true); });
+        }
     }
     private nint WindowProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
@@ -503,6 +521,7 @@ public partial class MainWindow : Window
         if (msg == 0x0312)
         {
             handled = true;
+            HotkeyDiagnostics.Mark("message", new { Hwnd = hwnd.ToInt64(), Id = wParam.ToInt64(), Raw = lParam.ToInt64(), IsVisible, IsActive, WindowState, Foreground = Native.GetForegroundWindow().ToInt64() });
             // Ignore stale queued messages from a shortcut that was replaced or disabled.
             var action = Enum.GetValues<HotkeyAction>().Cast<HotkeyAction?>().FirstOrDefault(a =>
                 Registration(a!.Value) is { } registration && wParam == registration.Id &&
@@ -510,16 +529,8 @@ public partial class MainWindow : Window
             if (editingHotkey != null && action != null)
                 CaptureHotkey(HotkeyText((uint)(long)lParam & 0xFFFF, ((uint)(long)lParam >> 16) & 0xFF));
             else if (editingHotkey == null && action != null && !exiting)
-            {
-                switch (action.Value)
-                {
-                    case HotkeyAction.Save: _ = SaveClip(messageReceived, "hotkey"); break;
-                    case HotkeyAction.Toggle: if (!recovering) _ = Toggle(); break;
-                    case HotkeyAction.Recording: _ = ToggleRecording(); break;
-                    case HotkeyAction.Screenshot: _ = TakeScreenshot(); break;
-                    case HotkeyAction.Microphone: ToggleMicrophoneMuted(); break;
-                }
-            }
+                Dispatcher.BeginInvoke(() => _ = ExecuteHotkey(action.Value, messageReceived));
+            else HotkeyDiagnostics.Mark("message-ignored", new { Action = action?.ToString(), Editing = editingHotkey != null, exiting });
         }
         return 0;
     }

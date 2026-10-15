@@ -36,6 +36,7 @@ public partial class MainWindow
                 : OverlayPlacement.Resolve(selection.Display.Handle);
             screenshotOperation = ScreenshotCapture.Take(selection, cancellation.Token);
             lastScreenshot = await screenshotOperation;
+            HotkeyDiagnostics.Mark("screenshot-published", new { lastScreenshot.Path });
             overlays?.ShowScreenshotSaved(lastScreenshot, overlayMonitor);
             LastClipText.Text = "Скриншот сохранён: " + lastScreenshot.Path;
         }
@@ -44,11 +45,13 @@ public partial class MainWindow
         {
             LastClipText.Text = "Скриншот не сохранён: источник не ответил. Повтори попытку.";
             ClipFiles.Log("screenshot-timeout", ex);
+            Notify("Скриншот не сохранён", "Источник не ответил. Повтори попытку.", true);
         }
         catch (Exception ex)
         {
             LastClipText.Text = "Скриншот не сохранён: " + ex.Message;
             ClipFiles.Log("screenshot", ex);
+            Notify("Скриншот не сохранён", ex.Message, true);
         }
         finally
         {

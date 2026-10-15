@@ -72,6 +72,13 @@ public partial class App : Application
         // Share the legacy singleton identity with installed Replay builds.
         mutex = new Mutex(true, "Local\\Replay.Nvidia.Desktop", out var first);
         if (!first) { MessageBox.Show("Rewind уже запущен. Открой значок в трее."); Shutdown(); return; }
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("REWIND_HOTKEY_DIAGNOSTICS_FILE")))
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            HotkeyDiagnostics.Mark("session", new { Session = Process.GetCurrentProcess().SessionId,
+                Administrator = new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator),
+                OS = Environment.OSVersion.VersionString, Apartment = Thread.CurrentThread.GetApartmentState().ToString() });
+        }
         DispatcherUnhandledException += (_, args) =>
         {
             Directory.CreateDirectory(Settings.DataDirectory);

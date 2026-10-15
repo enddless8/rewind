@@ -4,7 +4,8 @@ namespace Replay;
 public sealed class Settings
 {
     // Keep the legacy directory: existing settings, queue and buffer paths must survive rebranding.
-    public static string DataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Replay");
+    internal static string? DataDirectoryForTests { get; set; }
+    public static string DataDirectory => DataDirectoryForTests ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Replay");
     public string CaptureMode { get; set; } = "Game";
     public string AudioMode { get; set; } = "Game";
     public string Codec { get; set; } = "Auto";

@@ -47,7 +47,7 @@ The three Rewindtica v0.1 faces and Inter Regular are embedded as WPF resources.
 
 The supplied upstream copyright and complete SIL OFL 1.1 text are preserved byte-for-byte in [LICENSE-Rewindtica.txt](assets/fonts/LICENSE-Rewindtica.txt); [NOTICE-Rewindtica.txt](assets/fonts/NOTICE-Rewindtica.txt) records the derivative attribution. Both and the Inter license are copied into `licenses/fonts/` by build and publish. No font outlines or metadata are modified. See the [official OFL text](https://openfontlicense.org/open-font-license-official-text/) for the font's separate terms.
 
-Coolvetica Regular/Light have been removed from the current application resources and source tree. Historical Git commits and private ignored build/research snapshots still contain those files. A clean working tree does not sanitize public history. Do not publish the original repository or old binary snapshots; select and verify a separate publication strategy first. No history rewrite has been performed.
+Coolvetica Regular/Light have been removed from the current application resources and source tree. The sanitized main history reviewed on 2026-10-15 (11 commits plus the subsequent Save Queue commit) contains no Coolvetica font binary; its four reachable font blobs match the current Inter/Rewindtica files. This is a scoped audit of main, not approval to upload arbitrary refs, .git contents or ignored old snapshots. Preserve the sanitized history. Re-run scripts/audit-source-publication.py against the exact final publication ref; see docs/PUBLICATION-READINESS.md. No history rewrite was performed during the hotkey work.
 
 ## SVGs, application/tray artwork and adapted code
 

@@ -14,6 +14,75 @@ public partial class MainWindow
     private sealed record HotkeyRegistration(int Id, uint Modifiers, uint Key);
     private HotkeyRegistration? saveRegistration, toggleRegistration, recordingRegistration, screenshotRegistration, microphoneRegistration;
     private HotkeyAction? editingHotkey;
+    private readonly Dictionary<HotkeyAction, string> hotkeyErrors = new();
+    private readonly HashSet<HotkeyAction> hotkeyCommands = new();
+    private readonly Dictionary<HotkeyAction, long> lastHotkeyCommands = new();
+    private readonly HashSet<int> nativeHotkeyIds = new();
+    private static string ActionText(HotkeyAction action) => action switch
+    {
+        HotkeyAction.Save => "Сохранить Rewind", HotkeyAction.Toggle => "Включить Rewind",
+        HotkeyAction.Recording => "Запись", HotkeyAction.Screenshot => "Скриншот", _ => "Микрофон"
+    };
+
+    private void UpdateHotkeyWarnings()
+    {
+        hotkeyWarning = hotkeyErrors.Count == 0 ? null : string.Join("\n", hotkeyErrors.Select(e => $"{ActionText(e.Key)}: {e.Value}"));
+        HotkeyWarningText.Text = hotkeyWarning == null ? "" : "Горячие клавиши недоступны. Настройки → Горячие клавиши.\n" + hotkeyWarning;
+        HotkeyEditStatus.Text = hotkeyWarning ?? "";
+    }
+
+    private void RetryHotkeys_Click(object sender, RoutedEventArgs e) => RegisterKeys();
+
+    private void RestoreHotkeyDefaults_Click(object sender, RoutedEventArgs e)
+    {
+        CancelHotkeyEdit();
+        var next = CopyHotkeySettings();
+        var defaults = new Settings();
+        foreach (var action in Enum.GetValues<HotkeyAction>())
+        {
+            var value = HotkeyValue(defaults, action);
+            SetHotkeyValue(next, action, value.Enabled, value.Modifiers, value.Key);
+        }
+        TryCommitHotkeySettings(next, null);
+    }
+
+    private async Task ExecuteHotkey(HotkeyAction action, long received)
+    {
+        Dispatcher.VerifyAccess();
+        var name = action.ToString();
+        // Save has its own admission guard and bounded queue; do not serialize exports.
+        var exclusive = action != HotkeyAction.Save;
+        var toggle = action is HotkeyAction.Toggle or HotkeyAction.Recording or HotkeyAction.Microphone;
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (exiting || editingHotkey != null || Registration(action) == null ||
+            exclusive && hotkeyCommands.Contains(action) ||
+            toggle && lastHotkeyCommands.TryGetValue(action, out var last) && System.Diagnostics.Stopwatch.GetElapsedTime(last, now).TotalMilliseconds < 350)
+        { HotkeyDiagnostics.Mark("command-ignored", new { Action = name, Reason = "exiting/editing/unregistered/in-flight/debounce" }); return; }
+        if (exclusive) hotkeyCommands.Add(action);
+        lastHotkeyCommands[action] = now;
+        HotkeyDiagnostics.Mark("command-start", new { Action = name, Received = received });
+        try
+        {
+            switch (action)
+            {
+                case HotkeyAction.Save: await SaveClip(received, "hotkey"); break;
+                case HotkeyAction.Toggle: if (!recovering) await Toggle(); break;
+                case HotkeyAction.Recording: await ToggleRecording(); break;
+                case HotkeyAction.Screenshot: await TakeScreenshot(); break;
+                case HotkeyAction.Microphone: ToggleMicrophoneMuted(); break;
+            }
+            // Shared commands report their own success/errors. Returning alone is not success.
+            HotkeyDiagnostics.Mark("command-returned", new { Action = name, recordingWanted, busy, recovering,
+                Recording = ConventionalRecording.State.ToString(), RecordingError = ConventionalRecording.Error, rewindCommandError, LastFeedback = LastClipText.Text });
+        }
+        catch (Exception ex)
+        {
+            ClipFiles.Log("hotkey-command", ex, name);
+            HotkeyDiagnostics.Mark("command-failed", new { Action = name, Error = ex.ToString() });
+            Notify("Ошибка горячей клавиши", ActionText(action) + ": " + ex.Message, true);
+        }
+        finally { if (exclusive) hotkeyCommands.Remove(action); }
+    }
 
     private static (bool Enabled, uint Modifiers, uint Key) HotkeyValue(Settings value, HotkeyAction action) => action switch
     {
@@ -52,9 +121,6 @@ public partial class MainWindow
             case HotkeyAction.Microphone: microphoneRegistration = registration; break;
         }
     }
-    private static int PrimaryHotkeyId(HotkeyAction action) => action switch
-    { HotkeyAction.Save => 1, HotkeyAction.Toggle => 2, HotkeyAction.Recording => 5, HotkeyAction.Screenshot => 6, HotkeyAction.Microphone => 9, _ => throw new ArgumentOutOfRangeException(nameof(action)) };
-
     private static void ValidateHotkey(uint modifiers, uint key)
     {
         if (modifiers == 0 || (modifiers & ~7u) != 0 || key < 0x20 || key > 0xFE ||
@@ -65,27 +131,46 @@ public partial class MainWindow
     private void ReleaseHotkey(HotkeyRegistration? registration)
     {
         if (source != null && registration != null)
-            Native.UnregisterHotKey(source.Handle, registration.Id);
+        {
+            Dispatcher.VerifyAccess();
+            var ok = Native.UnregisterHotKey(source.Handle, registration.Id);
+            var error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+            HotkeyDiagnostics.Mark("unregister", new { registration.Id, Success = ok, Error = ok ? 0 : error });
+            if (ok) nativeHotkeyIds.Remove(registration.Id);
+            if (!ok) ClipFiles.Log("hotkey-unregister", new System.ComponentModel.Win32Exception(error), $"Id={registration.Id}; HWND={source.Handle}");
+        }
+    }
+
+    private void DetachHotkeys()
+    {
+        Dispatcher.VerifyAccess();
+        foreach (var action in Enum.GetValues<HotkeyAction>())
+        { ReleaseHotkey(Registration(action)); SetRegistration(action, null); }
+        source?.RemoveHook(WindowProc);
+        source = null;
     }
 
     // Keep the old registration until its replacement and config save have both succeeded.
-    // Two IDs per action let RegisterHotKey reserve the new combination first.
-    private HotkeyRegistration? ReserveHotkey(HotkeyRegistration? current, bool enabled, uint modifiers, uint key, int primaryId)
+    // IDs belong to native reservations, so a binding can transfer between actions
+    // (including legacy F9 Toggle -> Recording) without temporarily releasing it.
+    private HotkeyRegistration? ReserveHotkey(HotkeyRegistration? current, bool enabled, uint modifiers, uint key, HotkeyAction action)
     {
+        Dispatcher.VerifyAccess();
         if (!enabled) return null;
         ValidateHotkey(modifiers, key);
         if (current?.Modifiers == modifiers && current.Key == key) return current;
         if (source == null) throw new InvalidOperationException("Окно ещё не готово. Попробуй снова.");
-        var id = current?.Id == primaryId ? primaryId + 2 : primaryId;
+        var id = Enumerable.Range(1, 0xBFFF).First(candidate => !nativeHotkeyIds.Contains(candidate));
         var registered = Native.RegisterHotKey(source.Handle, id, modifiers | 0x4000, key);
         var error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+        HotkeyDiagnostics.Mark("register", new { Id = id, Modifiers = modifiers, Key = key, Hwnd = source.Handle.ToInt64(), Success = registered, Error = registered ? 0 : error });
         if (!registered)
         {
-            var action = Enum.GetValues<HotkeyAction>().Single(a => PrimaryHotkeyId(a) == primaryId);
             ClipFiles.Log("hotkey-register", new System.ComponentModel.Win32Exception(error),
                 $"Action={action}; Shortcut={HotkeyText(modifiers, key)}; Enabled={enabled}; Id={id}; HWND={source.Handle}");
-            throw new InvalidOperationException($"{HotkeyText(modifiers, key)} недоступно: сочетание занято или запрещено Windows (код {error}). Предыдущее сохранено.");
+            throw new InvalidOperationException($"{HotkeyText(modifiers, key)}: {new System.ComponentModel.Win32Exception(error).Message} (код {error}). Выбери свободное сочетание или освободи его в другом приложении и нажми «Повторить регистрацию». Сохранённое назначение не изменено.");
         }
+        nativeHotkeyIds.Add(id);
         return new(id, modifiers, key);
     }
 
@@ -98,9 +183,10 @@ public partial class MainWindow
             if (value.Enabled && Enum.GetValues<HotkeyAction>().Any(other => other != action &&
                 Registration(other) is { } active && active.Modifiers == value.Modifiers && active.Key == value.Key))
                 throw new ArgumentException("Это сочетание уже назначено другому действию Rewind.");
-            var next = ReserveHotkey(current, value.Enabled, value.Modifiers, value.Key, PrimaryHotkeyId(action));
+            var next = ReserveHotkey(current, value.Enabled, value.Modifiers, value.Key, action);
             if (!ReferenceEquals(current, next)) ReleaseHotkey(current);
             SetRegistration(action, next);
+            hotkeyErrors.Remove(action);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
@@ -108,7 +194,8 @@ public partial class MainWindow
             // Registration availability is not the user's enabled preference. Keep
             // that preference so editing a rejected startup shortcut can recover it.
             if (current != null) SetHotkeyValue(settings, action, true, current.Modifiers, current.Key);
-            hotkeyWarning = ex.Message;
+            hotkeyErrors[action] = ex.Message;
+            ClipFiles.Log("hotkey-config", ex, ActionText(action));
         }
     }
 
@@ -117,6 +204,7 @@ public partial class MainWindow
     private bool TryCommitHotkeySettings(Settings next, HotkeyAction? requestedAction)
     {
         var replacements = new Dictionary<HotkeyAction, HotkeyRegistration?>();
+        var previous = Enum.GetValues<HotkeyAction>().Select(Registration).OfType<HotkeyRegistration>().ToHashSet();
         try
         {
             var actions = Enum.GetValues<HotkeyAction>();
@@ -136,23 +224,24 @@ public partial class MainWindow
             {
                 var value = HotkeyValue(next, action);
                 if (requestedAction == action || value != HotkeyValue(settings, action))
-                    replacements[action] = ReserveHotkey(Registration(action), value.Enabled, value.Modifiers, value.Key, PrimaryHotkeyId(action));
+                    replacements[action] = value.Enabled ? previous.FirstOrDefault(r => r.Modifiers == value.Modifiers && r.Key == value.Key)
+                        ?? ReserveHotkey(Registration(action), true, value.Modifiers, value.Key, action) : null;
             }
             next.Save();
             settings = next;
             foreach (var (action, replacement) in replacements)
-            {
-                if (!ReferenceEquals(replacement, Registration(action))) ReleaseHotkey(Registration(action));
                 SetRegistration(action, replacement);
-            }
-            hotkeyWarning = null;
-            HotkeyEditStatus.Text = hotkeyWarning ?? "";
+            var retained = Enum.GetValues<HotkeyAction>().Select(Registration).OfType<HotkeyRegistration>().ToHashSet();
+            foreach (var old in previous.Except(retained)) ReleaseHotkey(old);
+            foreach (var action in replacements.Keys) hotkeyErrors.Remove(action);
+            UpdateHotkeyWarnings();
             return true;
         }
         catch (Exception ex)
         {
+            ClipFiles.Log("hotkey-settings", ex);
             foreach (var (action, replacement) in replacements)
-                if (!ReferenceEquals(replacement, Registration(action))) ReleaseHotkey(replacement);
+                if (replacement != null && !previous.Contains(replacement)) ReleaseHotkey(replacement);
             HotkeyEditStatus.Text = ex is ArgumentException or InvalidOperationException ? ex.Message
                 : "Не удалось сохранить настройки. Предыдущее сочетание осталось активным.";
             return false;
@@ -169,11 +258,14 @@ public partial class MainWindow
         RecordingHotkeyBox.Text = HotkeyText(settings.RecordingHotkeyModifiers, settings.RecordingHotkeyKey);
         ScreenshotHotkeyBox.Text = HotkeyText(settings.ScreenshotHotkeyModifiers, settings.ScreenshotHotkeyKey);
         MicrophoneHotkeyBox.Text = HotkeyText(settings.MicrophoneHotkeyModifiers, settings.MicrophoneHotkeyKey);
-        SaveHotkeyEnabledCheck.IsChecked = settings.HotkeyEnabled && (source == null || saveRegistration != null);
-        ToggleHotkeyEnabledCheck.IsChecked = settings.ToggleHotkeyEnabled && (source == null || toggleRegistration != null);
-        RecordingHotkeyEnabledCheck.IsChecked = settings.RecordingHotkeyEnabled && (source == null || recordingRegistration != null);
-        ScreenshotHotkeyEnabledCheck.IsChecked = settings.ScreenshotHotkeyEnabled && (source == null || screenshotRegistration != null);
-        MicrophoneHotkeyEnabledCheck.IsChecked = settings.MicrophoneHotkeyEnabled && (source == null || microphoneRegistration != null);
+        SaveHotkeyEnabledCheck.IsChecked = settings.HotkeyEnabled;
+        ToggleHotkeyEnabledCheck.IsChecked = settings.ToggleHotkeyEnabled;
+        RecordingHotkeyEnabledCheck.IsChecked = settings.RecordingHotkeyEnabled;
+        ScreenshotHotkeyEnabledCheck.IsChecked = settings.ScreenshotHotkeyEnabled;
+        MicrophoneHotkeyEnabledCheck.IsChecked = settings.MicrophoneHotkeyEnabled;
+        foreach (var (control, action) in new[] { (SaveHotkeyEnabledCheck, HotkeyAction.Save), (ToggleHotkeyEnabledCheck, HotkeyAction.Toggle),
+            (RecordingHotkeyEnabledCheck, HotkeyAction.Recording), (ScreenshotHotkeyEnabledCheck, HotkeyAction.Screenshot), (MicrophoneHotkeyEnabledCheck, HotkeyAction.Microphone) })
+            control.ToolTip = hotkeyErrors.GetValueOrDefault(action) ?? (Registration(action) != null ? "Зарегистрировано в Windows" : "Выключено");
         HotkeyHint.Text = "Работают и при свёрнутом окне. Изменить — нажми сочетание; Esc — отмена. «—» — не назначено; выбери свободное сочетание и включи переключатель.";
     }
 
