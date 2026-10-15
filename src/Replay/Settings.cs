@@ -26,6 +26,7 @@ public sealed class Settings
     public string BufferDirectory { get; set; } = Path.Combine(DataDirectory, "buffer");
     public bool Discord { get; set; } = true;
     public bool Sounds { get; set; } = true;
+    public bool ShowServiceInfo { get; set; }
     public bool HideDisplayBorder { get; set; } = true;
     public bool CompressAfterSave { get; set; }
     public CompressionProfile Compression { get; set; } = new();

@@ -656,7 +656,8 @@
                                         <TextBlock x:Name="AudioOffsetHelp" Text="При положительном сдвиге звук на видео записывается раньше, при отрицательном — позже. Оставьте 0 мс, если коррекция синхронизации не требуется." Style="{StaticResource SettingsHelp}" Margin="6,6,6,0" FontSize="12" />
                                     </StackPanel>
                                 </Grid>
-                                <Expander x:Name="AdvancedExtras" Header="Технические параметры захвата" Style="{StaticResource SettingsExpander}" Margin="0,20,0,0">
+                                <StackPanel x:Name="AdvancedExtras" Margin="0,20,0,0">
+                                    <TextBlock Text="Технические параметры захвата" Foreground="{StaticResource RewindMuted}" FontSize="13" Margin="0,8,0,8" />
                                     <StackPanel Margin="0,12,0,0">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -668,7 +669,16 @@
                                         </Grid>
                                         <TextBlock Text="SDR · MKV · Исходное соотношение сторон сохраняется с полями. Сохранение начинается с ключевого кадра: возможен запас до 2 секунд. При сворачивании игры рабочий стол не захватывается; картинка может остановиться." Style="{StaticResource SettingsHelp}" Margin="0,10,0,0" />
                                     </StackPanel>
-                                </Expander>
+                                </StackPanel>
+                                <Grid Margin="0,24,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Показывать служебную информацию" Style="{StaticResource SettingsLabel}" Margin="0,0,12,0" />
+                                    <CheckBox x:Name="ShowServiceInfoCheck" Grid.Column="1" Style="{StaticResource SettingsToggle}" VerticalAlignment="Center" Click="ShowServiceInfo_Click" AutomationProperties.Name="Показывать служебную информацию" />
+                                </Grid>
+                                <TextBlock x:Name="VersionText" Text="{x:Static local:ApplicationInfo.VersionLabel}" Foreground="{StaticResource RewindMuted}" FontSize="12" Margin="0,20,0,0" />
                             </StackPanel>
                         </Grid>
                         <Grid x:Name="CaptureCompression" Visibility="{Binding ElementName=CaptureNav, Path=IsChecked, Converter={StaticResource PageVisibility}}" Margin="0,24,0,12">
@@ -722,7 +732,11 @@
             <TextBlock x:Name="LastClipText" Style="{StaticResource RewindHelper}" MaxHeight="38" TextTrimming="CharacterEllipsis" ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
             <StackPanel.Style>
                 <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
                     <Style.Triggers>
+                        <DataTrigger Binding="{Binding ElementName=ShowServiceInfoCheck, Path=IsChecked}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
                         <MultiDataTrigger>
                             <MultiDataTrigger.Conditions>
                                 <Condition Binding="{Binding ElementName=MainStateText, Path=Text}" Value="" />

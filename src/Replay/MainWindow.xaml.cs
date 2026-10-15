@@ -228,9 +228,15 @@ public partial class MainWindow : Window
         BufferFolderBox.Text = settings.BufferDirectory;
         GroupByApplicationCheck.IsChecked = settings.GroupByApplication;
         DiscordCheck.IsChecked = settings.Discord; SoundCheck.IsChecked = settings.Sounds;
+        ShowServiceInfoCheck.IsChecked = settings.ShowServiceInfo;
         HideBorderCheck.IsChecked = settings.HideDisplayBorder; CompressCheck.IsChecked = settings.CompressAfterSave;
         CompressionProfileText.Text = settings.Compression.Summary;
         RefreshHotkeyControls();
+    }
+    private void ShowServiceInfo_Click(object sender, RoutedEventArgs e)
+    {
+        settings.ShowServiceInfo = ShowServiceInfoCheck.IsChecked == true;
+        settings.Save();
     }
     private void RefreshSources()
     {

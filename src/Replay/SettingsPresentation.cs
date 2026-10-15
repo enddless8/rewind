@@ -1,7 +1,15 @@
 using System.Globalization;
+using System.Reflection;
 using System.Windows.Data;
 
 namespace Replay;
+
+public static class ApplicationInfo
+{
+    public static string VersionLabel { get; } = "Rewind v" +
+        (typeof(ApplicationInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion.Split('+')[0] ?? typeof(ApplicationInfo).Assembly.GetName().Version?.ToString(3));
+}
 
 // UI adapters only. The existing text fields remain the input to ReadSettings().
 public sealed class RewindDurationPositionConverter : IValueConverter
